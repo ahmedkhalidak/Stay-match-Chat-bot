@@ -1,99 +1,73 @@
 import json
 import difflib
-
 from pathlib import Path
+from app.utils.logger import debug_log
 
 
 class KnowledgeService:
 
     def __init__(self):
-
         file_path = (
-            Path(__file__)
-            .resolve()
-            .parent.parent
+            Path(__file__).resolve().parent.parent
             / "data"
             / "knowledge_base.json"
         )
+        with open(file_path, "r", encoding="utf-8") as f:
+            self.knowledge = json.load(f)
 
-        with open(
-            file_path,
-            "r",
-            encoding="utf-8"
-        ) as file:
+        self.questions: list[str] = []
+        self.answer_map: dict[str, str] = {}
+        self._prepare()
 
-            self.knowledge = json.load(
-                file
-            )
-
-        self.questions = []
-
-        self.question_answer_map = {}
-
-        self._prepare_knowledge()
-
-    # ──────────────────────────────────────
-    # Prepare Knowledge
-    # ──────────────────────────────────────
-
-    def _prepare_knowledge(self):
-
-        for section in (
-            self.knowledge.values()
-        ):
-
+    def _prepare(self):
+        for section in self.knowledge.values():
             for item in section:
+                q = item["question"].lower().strip()
+                self.questions.append(q)
+                self.answer_map[q] = item["answer"]
 
-                question = (
-                    item["question"]
-                    .lower()
-                    .strip()
-                )
-
-                answer = (
-                    item["answer"]
-                )
-
-                self.questions.append(
-                    question
-                )
-
-                self.question_answer_map[
-                    question
-                ] = answer
-
-    # ──────────────────────────────────────
-    # Search Answer
-    # ──────────────────────────────────────
-
-    def find_answer(
-        self,
-        message: str,
-    ):
-
-        message = (
-            message
-            .lower()
-            .strip()
-        )
-
-        matches = (
-            difflib.get_close_matches(
-                message,
-                self.questions,
-                n=1,
-                cutoff=0.55,
-            )
-        )
-
-        if not matches:
-
-            return None
-
-        best_match = matches[0]
-
+    def _normalize(self, text: str) -> str:
         return (
-            self.question_answer_map[
-                best_match
-            ]
+            text.lower().strip()
+            .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ة", "ه").replace("ى", "ي")
         )
+
+    def find_answer(self, message: str) -> str | None:
+        msg_norm = self._normalize(message)
+
+        # 1. Exact / substring match أسرع وأدق
+        for q in self.questions:
+            if msg_norm in q or q in msg_norm:
+                debug_log("KNOWLEDGE EXACT", q)
+                return self.answer_map[q]
+
+        # 2. Keyword overlap — كام كلمة مشتركة
+        msg_words = set(msg_norm.split())
+        best_q = None
+        best_overlap = 0
+
+        for q in self.questions:
+            q_words = set(q.split())
+            overlap = len(msg_words & q_words)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_q = q
+
+        if best_overlap >= 2:
+            debug_log("KNOWLEDGE KEYWORD", best_q)
+            return self.answer_map[best_q]
+
+        # 3. Fuzzy match كـ fallback بـ cutoff أعلى (0.65)
+        matches = difflib.get_close_matches(
+            msg_norm,
+            self.questions,
+            n=1,
+            cutoff=0.65,  # BUG FIX: كان 0.55 (منخفض جداً)
+        )
+
+        if matches:
+            debug_log("KNOWLEDGE FUZZY", matches[0])
+            return self.answer_map[matches[0]]
+
+        return None

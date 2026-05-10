@@ -5,7 +5,7 @@ from app.core.session_context import (
     SessionContext
 )
 
-from app.services.location_service import (
+from app.ranking.services.location_service import (
     LocationService
 )
 

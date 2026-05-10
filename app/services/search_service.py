@@ -1,403 +1,300 @@
+"""
+SearchService — المحرك الرئيسي للـ chatbot (نسخة محسّنة + LangChain + Pagination)
+Flow محترم ومصري فريندلي 🇪🇬
+"""
+
+import hashlib
+import json
 from app.core.memory_store import memory_store
-from app.services.knowledge_service import (
-    KnowledgeService
-)
-from app.services.chat_service import (
-    ChatService
-)
-from app.extractors.query_extractor import (
-    QueryExtractor
-)
-
-from app.extractors.followup_extractor import (
-    FollowUpExtractor
-)
-
-from app.services.intent_service import (
-    IntentService
-)
-
-from app.database.repositories.room_repository import (
-    RoomRepository
-)
-
-from app.database.repositories.property_repository import (
-    PropertyRepository
-)
-
-from app.formatters.response_formatter import (
-    ResponseFormatter
-)
-
-from app.validators.filter_validator import (
-    FilterValidator
-)
-
+from app.core.session_context import SessionContext
+from app.models.search_models import SearchFilters
+from app.extractors.query_extractor import QueryExtractor
+from app.extractors.filter_extractor import FilterExtractor
+from app.services.knowledge_service import KnowledgeService
+from app.services.chat_service import ChatService
+from app.services.location_service import LocationService
+from app.database.repositories.room_repository import RoomRepository
+from app.database.repositories.property_repository import PropertyRepository
+from app.formatters.response_formatter import ResponseFormatter
 from app.utils.logger import debug_log
 
 
 class SearchService:
 
     def __init__(self):
+        self.query_extractor = QueryExtractor()
+        self.filter_extractor = FilterExtractor()
+        self.room_repo = RoomRepository()
+        self.property_repo = PropertyRepository()
+        self.formatter = ResponseFormatter()
+        self.knowledge = KnowledgeService()
+        self.chat = ChatService()
+        self.location_service = LocationService()
 
-        self.query_extractor = (
-            QueryExtractor()
-        )
+    def _filters_hash(self, filters: SearchFilters) -> str:
+        data = json.dumps(filters.model_dump(), sort_keys=True, default=str)
+        return hashlib.md5(data.encode()).hexdigest()
 
-        self.followup_extractor = (
-            FollowUpExtractor()
-        )
+    def _save_turn(self, session_id: str, context: SessionContext, user_msg: str, assistant_msg: str):
+        context.add_message("user", user_msg)
+        context.add_message("assistant", assistant_msg)
+        memory_store.update_context(session_id, context)
 
-        self.validator = (
-            FilterValidator()
-        )
+    def handle_message(self, session_id: str, message: str) -> str:
 
-        self.room_repository = (
-            RoomRepository()
-        )
+        context = memory_store.get_context(session_id)
+        context.turn_count += 1
 
-        self.property_repository = (
-            PropertyRepository()
-        )
+        history_text = context.get_history_text()
+        debug_log("SESSION", session_id)
+        debug_log("TURN", context.turn_count)
+        debug_log("MESSAGE", message)
 
-        self.formatter = (
-            ResponseFormatter()
-        )
-        self.knowledge_service = (
-             KnowledgeService()
-        )
-        self.chat_service = (
-            ChatService()
-        )
-    def handle_message(
-        self,
-        session_id: str,
-        message: str,
-    ):
+        # ── 2. AI Extraction ─────────────────────
+        filters = self.query_extractor.extract(message, history_text)
+        debug_log("AI_FILTERS", filters.model_dump())
 
-        # ── Load context ─────────────────────────
-        context = memory_store.get_context(
-            session_id
-        )
+        intent = filters.intent or "invalid"
 
-        debug_log(
-            "SESSION",
-            session_id,
-        )
+        # ── 3. Special intents ───────────────────
+        if intent == "show_more":
+            return self._handle_show_more(session_id, context, message)
 
-        debug_log(
-            "MESSAGE",
-            message,
-        )
+        if intent == "go_back":
+            return self._handle_go_back(session_id, context, message)
 
-        debug_log(
-            "LAST SEARCH",
-            context.last_search,
-        )
+        # ── 4. Pending slot ──────────────────────
+        if context.pending_slot:
+            reply = self._handle_pending_slot(session_id, context, message, filters)
+            self._save_turn(session_id, context, message, reply)
+            return reply
 
-        debug_log(
-            "PENDING SLOT",
-            context.pending_slot,
-        )
-
-        # ── Detect intent ────────────────────────
-   # ──────────────────────────────────
-        # AI Extraction
-        # ──────────────────────────────────
-
-        filters = (
-            self.query_extractor.extract(
-                message
-            )
-        )
-
-        debug_log(
-            "RAW AI FILTERS",
-            filters,
-        )
-
-        # ──────────────────────────────────
-        # Validate Filters
-        # ──────────────────────────────────
-
-        filters = (
-            self.validator.validate(
-                filters
-            )
-        )
-
-        debug_log(
-            "VALIDATED FILTERS",
-            filters,
-        )
-
-        # ──────────────────────────────────
-        # AI Intent
-        # ──────────────────────────────────
-
-        intent = (
-            filters.intent
-        )
-
-        debug_log(
-            "AI INTENT",
-            intent,
-)
-        # ── Invalid / unrelated ─────────────────
-
-        if intent == "invalid":
-
-            knowledge_answer = (
-                self.knowledge_service.find_answer(
-                    message
-                )
-            )
-
-            if knowledge_answer:
-
-                debug_log(
-                    "KNOWLEDGE MATCH",
-                    knowledge_answer,
-                )
-
-                return knowledge_answer
-
-            return (
-                "أنا بساعد في البحث عن "
-                "الأوض والشقق داخل "
-                "StayMatch 😊"
-            )
-        # ── Empty messages ──────────────────────
-
-        if intent == "empty":
-
-            return (
-                "ممكن توضح طلبك أكتر؟ 😊"
-            )
-            # ── Small Talk ───────────────────────
-
+        # ── 5. Intent routing ────────────────────
         if intent == "small_talk":
-
-            return (
-                self.chat_service
-                .generate_reply(
-                    message
-                )
-            )
+            reply = self.chat.generate_reply(message)
+            self._save_turn(session_id, context, message, reply)
+            return reply
 
         if intent == "faq":
+            answer = self.knowledge.find_answer(message)
+            reply = answer if answer else "مش عارف أجاوب على ده دلوقتي 😅 جرب تسألني عن الأوض والشقق!"
+            self._save_turn(session_id, context, message, reply)
+            return reply
 
-            knowledge_answer = (
-                self.knowledge_service.find_answer(
-                    message
-                )
-            )
+        if intent == "invalid":
+            answer = self.knowledge.find_answer(message)
+            reply = answer if answer else "أنا بساعدك تلاقي أوضة أو شقة مناسبة في StayMatch 😊\nقولي مثلاً: \"عايز شقة في القاهرة تحت 5000\""
+            self._save_turn(session_id, context, message, reply)
+            return reply
 
-            if knowledge_answer:
+        # ── 6. Follow-up / Clarification / New ───
+        if intent == "follow_up" and context.last_search:
+            debug_log("FLOW", "FOLLOW_UP_MERGE")
+            filters = self.query_extractor.merge_filters(context.last_search, filters)
+            if not filters.search_type:
+                filters.search_type = context.last_search.search_type
 
-                debug_log(
-                    "KNOWLEDGE MATCH",
-                    knowledge_answer,
-                )
+        elif intent == "remove_filter" and context.last_search:
+            debug_log("FLOW", "REMOVE_FILTER")
+            filters = self._handle_remove_filter(context.last_search, filters)
 
-                return knowledge_answer
-
-        # ── Handle pending slot ──────────────────
-        if context.pending_slot:
-
-            pending_filters = (
-                self.query_extractor.extract(
-                    message
-                )
-            )
-
-            pending_filters = (
-                self.validator.validate(
-                    pending_filters
-                )
-            )
-
-            debug_log(
-                "PENDING FILTERS",
-                pending_filters,
-            )
-
-            if context.last_search:
-
-                filters = (
-                    self.query_extractor.merge_filters(
-                        context.last_search,
-                        pending_filters,
-                    )
-                )
-
-            else:
-
-                filters = pending_filters
-
-            context.pending_slot = None
+        elif intent == "clarification" and context.last_search:
+            debug_log("FLOW", "CLARIFICATION_MERGE")
+            filters = self.query_extractor.merge_filters(context.last_search, filters)
 
         else:
+            debug_log("FLOW", "NEW_SEARCH")
+            if not filters.search_type and context.last_search:
+                filters.search_type = context.last_search.search_type
 
-            # ── AI Extraction ────────────────────
-            new_filters = (
-                self.query_extractor.extract(
-                    message
-                )
-            )
+        # ── 7. Check missing info (Egyptian friendly) ─
+        clarification = self._check_missing(session_id, context, filters)
+        if clarification:
+            self._save_turn(session_id, context, message, clarification)
+            return clarification
 
-            debug_log(
-                "RAW AI FILTERS",
-                new_filters,
-            )
+        # ── 8. Defaults & Reset pagination ───────
+        if not filters.sort_by:
+            filters.sort_by = "relevance"
+        context.reset_pagination()
 
-            # ── Validate AI output ───────────────
-            new_filters = self.validator.validate(
-                new_filters
-            )
+        # ── 9. Execute search ────────────────────
+        context.last_search = filters
+        memory_store.update_context(session_id, context)
 
-            debug_log(
-                "VALIDATED FILTERS",
-                new_filters,
-            )
+        reply = self._execute_search(session_id, filters, context)
+        self._save_turn(session_id, context, message, reply)
+        return reply
 
-            # ── Follow-up merge ──────────────────
-            if (
-                intent == "follow_up"
-                and context.last_search
-            ):
+    def _handle_show_more(self, session_id: str, context: SessionContext, message: str) -> str:
+        if not context.last_search:
+            return "مفيش بحث قبل كده يا صاحبي 😅\nقولي \"عايز شقة في القاهرة\" مثلاً!"
 
-                debug_log(
-                    "FLOW",
-                    "FOLLOW-UP MERGE",
-                )
+        filters = context.last_search
+        context.current_offset += context.page_size
+        memory_store.update_context(session_id, context)
 
-                filters = (
-                    self.query_extractor.merge_filters(
-                        context.last_search,
-                        new_filters,
-                    )
-                )
+        reply = self._execute_search(session_id, filters, context)
+        self._save_turn(session_id, context, message, reply)
+        return reply
 
+    def _handle_go_back(self, session_id: str, context: SessionContext, message: str) -> str:
+        prev_filters = context.go_back()
+        if not prev_filters:
+            return "مفيش بحث قبل كده يا صاحبي 😅"
+
+        context.reset_pagination()
+        context.last_search = prev_filters
+        memory_store.update_context(session_id, context)
+
+        reply = self._execute_search(session_id, prev_filters, context)
+        self._save_turn(session_id, context, message, reply)
+        return reply
+
+    def _handle_remove_filter(self, base: SearchFilters, update: SearchFilters) -> SearchFilters:
+        merged = base.model_copy(deep=True)
+        for field, value in update.model_dump().items():
+            if field == "intent":
+                continue
+            if value is False:
+                setattr(merged, field, None)
+            elif value is not None:
+                setattr(merged, field, value)
+        return merged
+
+    def _handle_pending_slot(self, session_id: str, context: SessionContext,
+                             message: str, new_filters: SearchFilters) -> str:
+
+        slot = context.pending_slot
+        base = context.last_search or SearchFilters()
+
+        if slot == "search_type":
+            msg = message.lower()
+            if any(k in msg for k in ["اوضة", "اوضه", "غرفة", "room", "أوضة", "غرفه"]):
+                base.search_type = "room"
+            elif any(k in msg for k in ["شقة", "شقه", "apartment", "شقق", "سكن"]):
+                base.search_type = "property"
             else:
+                base.search_type = new_filters.search_type or base.search_type
 
-                debug_log(
-                    "FLOW",
-                    "NEW SEARCH",
-                )
+        elif slot == "city":
+            if new_filters.city:
+                base.city = new_filters.city
+            elif new_filters.governorate:
+                base.governorate = new_filters.governorate
+            else:
+                loc = self.location_service.detect_location(message)
+                if loc:
+                    if loc["type"] == "city":
+                        base.city = loc["en"]
+                    else:
+                        base.governorate = loc["en"]
 
-                filters = new_filters
+        context.pending_slot = None
 
-                # ── Infer search type ────────────
-                if (
-                    not filters.search_type
-                    and context.last_search
-                ):
+        clarification = self._check_missing(session_id, context, base)
+        if clarification:
+            return clarification
 
-                    filters.search_type = (
-                        context.last_search.search_type
-                    )
+        if not base.sort_by:
+            base.sort_by = "relevance"
 
-                    debug_log(
-                        "INFERRED SEARCH TYPE",
-                        filters.search_type,
-                    )
+        context.last_search = base
+        context.reset_pagination()
+        memory_store.update_context(session_id, context)
+        return self._execute_search(session_id, base, context)
 
-        # ── Clarification logic ──────────────────
+    def _check_missing(self, session_id: str, context: SessionContext,
+                       filters: SearchFilters) -> str | None:
+        """يسأل بطريقة مصرية فريندلي لو فيه معلومات ناقصة"""
 
         if not filters.search_type:
-
-            context.pending_slot = (
-                "search_type"
-            )
-
+            context.pending_slot = "search_type"
             context.last_search = filters
-
-            memory_store.update_context(
-                session_id,
-                context,
-            )
-
+            memory_store.update_context(session_id, context)
             return (
-                "عايز شقة ولا أوضة؟ 🏠"
+                "أهلاً بيك في StayMatch! 😄\n"
+                "عايز تسكن إزاي؟\n\n"
+                "1️⃣ شقة كاملة (ليك لوحدك أو مع صحابك)\n"
+                "2️⃣ أوضة في شقة مشتركة (مع roommates)\n\n"
+                "قولي \"شقة\" أو \"أوضة\" وانا هساعدك 👇"
             )
 
-        if (
-            filters.search_type == "room"
-            and not filters.city
-        ):
-
+        if filters.search_type == "room" and not filters.city and not filters.governorate:
             context.pending_slot = "city"
-
             context.last_search = filters
-
-            memory_store.update_context(
-                session_id,
-                context,
-            )
-
-            return "في أي مدينة؟ 📍"
-
-        # ── Default sorting ──────────────────────
-        if not filters.sort_by:
-
-            filters.sort_by = "relevance"
-
-        # ── Save state ───────────────────────────
-        context.last_search = filters
-
-        memory_store.update_context(
-            session_id,
-            context,
-        )
-
-        debug_log(
-            "FINAL FILTERS",
-            filters,
-        )
-
-        # ── Room search ──────────────────────────
-        if filters.search_type == "room":
-
-            rooms = self.room_repository.search(
-                filters
-            )
-
-            debug_log(
-                "ROOM RESULTS",
-                len(rooms),
-            )
-
-            return self.formatter.format_rooms(
-                rooms
-            )
-
-        # ── Property search ──────────────────────
-        elif filters.search_type == "property":
-
-            properties = (
-                self.property_repository.search(
-                    filters
-                )
-            )
-
-            debug_log(
-                "PROPERTY RESULTS",
-                len(properties),
-            )
-
+            memory_store.update_context(session_id, context)
             return (
-                self.formatter.format_properties(
-                    properties
-                )
+                "تمام، عايز الأوضة فين؟ 📍\n\n"
+                "ممكن تقولي اسم المدينة أو المنطقة، مثلاً:\n"
+                "• القاهرة\n"
+                "• مدينة نصر\n"
+                "• إسماعيلية\n"
+                "• المعادي\n\n"
+                "أو اكتب أي منطقة انت عايزها 👇"
             )
 
-        # ── Fallback ─────────────────────────────
-        debug_log(
-            "FALLBACK",
-            "No valid search type",
-        )
+        if filters.search_type == "property" and not filters.city and not filters.governorate:
+            # للشقق: نسأل بس مش نلزم (ممكن يبحث في كل مصر)
+            # بس لو هو قال "عايز شقة" بس، نسأله عشان النتائج تبقى أحسن
+            context.pending_slot = "city"
+            context.last_search = filters
+            memory_store.update_context(session_id, context)
+            return (
+                "عايز الشقة فين بالظبط؟ 📍\n\n"
+                "ممكن تقولي المدينة أو المنطقة، زي:\n"
+                "• القاهرة\n"
+                "• إسماعيلية\n"
+                "• مدينة نصر\n"
+                "• الشروق\n\n"
+                "أو قولي \"أي مكان\" وهدورلك في كل المحافظات 😎"
+            )
 
-        return (
-            "اسألني عن الشقق أو الأوض المتاحة 😊"
-        )
+        return None
+
+    def _execute_search(self, session_id: str, filters: SearchFilters, context: SessionContext) -> str:
+
+        cache_key = self._filters_hash(filters)
+        offset = context.current_offset
+        limit = context.page_size
+        page_num = (offset // limit) + 1
+
+        if cache_key == context.cache_key and context.cached_results:
+            all_results = context.cached_results
+            page_results = all_results[offset:offset + limit]
+            has_more = len(all_results) > offset + limit
+        else:
+            if filters.search_type == "room":
+                debug_log("SEARCH", f"room offset={offset} limit={limit}")
+                page_results = self.room_repo.search(filters, offset=offset, limit=limit)
+                next_page = self.room_repo.search(filters, offset=offset + limit, limit=1)
+                has_more = len(next_page) > 0
+
+            elif filters.search_type == "property":
+                debug_log("SEARCH", f"property offset={offset} limit={limit}")
+                page_results = self.property_repo.search(filters, offset=offset, limit=limit)
+                next_page = self.property_repo.search(filters, offset=offset + limit, limit=1)
+                has_more = len(next_page) > 0
+
+            else:
+                return "اسألني عن الشقق أو الأوض المتاحة 😊"
+
+            if offset == 0:
+                context.cache_key = cache_key
+                context.cached_results = list(page_results)
+            else:
+                context.cached_results.extend(list(page_results))
+
+        context.last_results_count = len(page_results)
+        memory_store.update_context(session_id, context)
+
+        if offset == 0:
+            context.push_search(filters, len(page_results))
+            memory_store.update_context(session_id, context)
+
+        if filters.search_type == "room":
+            reply = self.formatter.format_rooms(page_results, filters, has_more=has_more, page_num=page_num)
+        else:
+            reply = self.formatter.format_properties(page_results, filters, has_more=has_more, page_num=page_num)
+
+        return reply
