@@ -1,0 +1,594 @@
+[
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "Id",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "PK",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "PropertyId",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": "Properties.Id"
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "RoomId",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": "Rooms.Id"
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "AllowsFamilies",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "AllowsChildren",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "AllowsStudents",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "StudentGender",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "AllowsWorkers",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "WorkerGender",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "AllowedTenants",
+    "ColumnName": "PetsAllowed",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Id",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "PK",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "OwnerId",
+    "FullDataType": "nvarchar(900)",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": "AspNetUsers.Id"
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Name",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Description",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Street",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "City",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Government",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Latitude",
+    "FullDataType": "float",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Longitude",
+    "FullDataType": "float",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "PropertyType",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "NumberOfBedrooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "NumberOfLivingRooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "NumberOfEnSuiteBathrooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "NumberOfGuestBathrooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "TotalRooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "AvailableRooms",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Furnished",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "IsDraft",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Deposite",
+    "FullDataType": "decimal(10,2)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "AvailableFrom",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "CreatedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "LastModifiedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "MonthlyRent",
+    "FullDataType": "decimal(10,2)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "Size",
+    "FullDataType": "decimal(10,2)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "DeletedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "IsDeleted",
+    "FullDataType": "bit",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "MinimumStay",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "IsApproved",
+    "FullDataType": "bit",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "IsRejected",
+    "FullDataType": "bit",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "ApprovedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Properties",
+    "ColumnName": "RejectionReason",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "PropertyId",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "PK",
+    "FK_Reference": "Properties.Id"
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Wifi",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Tv",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Cooktop",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Oven",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Kettle",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Dishwasher",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Refrigerator",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Microwave",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "Washer",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "FreeParking",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "AirConditioning",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "SmokeAlarm",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "PropertyAmenities",
+    "ColumnName": "FireExtinguisher",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Id",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "PK",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "PropertyId",
+    "FullDataType": "int",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": "Properties.Id"
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "RoomName",
+    "FullDataType": "nvarchar(MAX)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Month_rent",
+    "FullDataType": "decimal(10,2)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Deposit",
+    "FullDataType": "decimal(10,2)",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Furnished",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "AvailableFrom",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Capacity",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "CapacityAvailable",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "EnSuiteBathroom",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "SharedBathroom",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Balcony",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "Window",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "PetsAllowed",
+    "FullDataType": "bit",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "CreatedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "LastModifiedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "IsDeleted",
+    "FullDataType": "bit",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "DeletedAt",
+    "FullDataType": "datetime2",
+    "Nullable": "NOT NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  },
+  {
+    "TableName": "Rooms",
+    "ColumnName": "MinimumStay",
+    "FullDataType": "int",
+    "Nullable": "NULL",
+    "IsPK": "",
+    "FK_Reference": ""
+  }
+]

@@ -4,7 +4,7 @@ from typing import Optional
 
 class SearchFilters(BaseModel):
     intent: Optional[str] = None
-    search_type: Optional[str] = None
+    search_type: Optional[str] = None  # "room" | "property" | "shared"
     city: Optional[str] = None
     governorate: Optional[str] = None
     min_price: Optional[int] = None

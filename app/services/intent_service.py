@@ -5,45 +5,193 @@ from app.core.session_context import (
     SessionContext
 )
 
-from app.ranking.services.location_service import (
+from app.services.location_service import (
     LocationService
 )
-
+from app.utils.text_normalizer import (
+    TextNormalizer
+)
 
 class IntentService:
 
     SEARCH_KEYWORDS = {
 
-        "room": [
-            "اوضة",
-            "غرفة",
-            "room",
-            "shared",
-            "single",
-            "roommate",
-        ],
+    "room": [
 
-        "property": [
-            "شقة",
-            "سكن",
-            "apartment",
-            "flat",
-            "property",
-        ],
+        # Arabic / Egyptian Arabic
+        "اوضة",
+        "أوضة",
+        "اوضه",
+        "أوضه",
+        "قوضة",
+        "قوضه",
+        "غرفة",
+        "غرفه",
+        "حجرة",
+        "حجره",
+        "سكن",
+        "سرير",
+        "مكان",
+        "استوديو",
+        "استديو",
+        "سنجل",
+        "دبل",
+        "مشتركة",
+        "مشترك",
+        "خاصة",
+        "خاص",
+        "فردية",
+        "شباب",
+        "طلبة",
+        "طلاب",
+        "بنات",
+        "ولاد",
+        "سكن شباب",
+        "سكن طلبة",
+        "سكن طلاب",
+        "غرفة نوم",
+        "اوضة نوم",
+        "اوضة مشتركة",
+        "غرفة مشتركة",
+        "اوضة خاصة",
+        "غرفة خاصة",
 
-        "follow_up": [
-            "ارخص",
-            "اغلي",
-            "اعلي",
-            "اقل",
-            "اكتر",
-            "تحت",
-            "فوق",
-            "wifi",
-            "واي فاي",
-            "مفروشة",
-        ],
-    }
+        # English
+        "room",
+        "rooms",
+        "bedroom",
+        "private room",
+        "shared room",
+        "single room",
+        "double room",
+        "studio",
+        "master room",
+        "guest room",
+        "roommate",
+        "bed space",
+        "shared",
+        "single",
+        "private",
+        "furnished room",
+        "student housing",
+        "youth housing",
+
+        # Advanced / alternative
+        "chamber",
+        "compartment",
+        "unit",
+        "space",
+        "suite",
+        "cabin",
+    ],
+
+    "property": [
+
+        # Arabic
+        "شقة",
+        "شقه",
+        "شقق",
+        "شقة مفروشة",
+        "استوديو",
+        "استديو",
+        "دوبلكس",
+        "فيلا",
+        "بيت",
+        "منزل",
+        "عقار",
+        "وحدة",
+        "سكن",
+        "عمارة",
+        "برج",
+
+        # English
+        "apartment",
+        "apartments",
+        "flat",
+        "property",
+        "studio apartment",
+        "duplex",
+        "villa",
+        "house",
+        "home",
+        "building",
+        "residence",
+        "real estate",
+        "unit",
+    ],
+
+    "follow_up": [
+
+        # Price / sorting
+        "ارخص",
+        "أرخص",
+        "اغلى",
+        "أغلى",
+        "اعلى",
+        "أعلى",
+        "اقل",
+        "أقل",
+        "اكتر",
+        "أكتر",
+        "تحت",
+        "فوق",
+        "سعر",
+        "ميزانية",
+        "budget",
+        "cheap",
+        "cheapest",
+        "expensive",
+        "lower",
+        "higher",
+        "price",
+        "max",
+        "min",
+
+        # Furniture / utilities
+        "مفروشة",
+        "مفروش",
+        "غير مفروشة",
+        "مكيف",
+        "تكييف",
+        "wifi",
+        "wi-fi",
+        "واي فاي",
+        "انترنت",
+        "غاز",
+        "كهربا",
+        "مياه",
+        "مطبخ",
+        "حمام",
+        "غسالة",
+        "ثلاجة",
+        "بلكونة",
+
+        # Preferences
+        "قريب",
+        "بعيد",
+        "هادئ",
+        "واسعة",
+        "واسع",
+        "نضيف",
+        "نظيفة",
+        "luxury",
+        "modern",
+        "clean",
+        "quiet",
+
+        # Rental related
+        "ايجار",
+        "إيجار",
+        "rent",
+        "rental",
+        "شهري",
+        "يومي",
+        "سنوي",
+        "monthly",
+        "daily",
+        "yearly",
+    ],
+}
 
     def __init__(self):
 
@@ -51,53 +199,6 @@ class IntentService:
             LocationService()
         )
 
-    # ──────────────────────────────────────
-    # Normalize Text
-    # ──────────────────────────────────────
-
-    def normalize_text(
-        self,
-        text: str,
-    ):
-
-        text = text.lower()
-
-        text = re.sub(
-            r"[^\w\s]",
-            " ",
-            text
-        )
-
-        replacements = {
-
-            "أ": "ا",
-            "إ": "ا",
-            "آ": "ا",
-
-            "ة": "ه",
-
-            "ى": "ي",
-
-            "ؤ": "و",
-            "ئ": "ي",
-        }
-
-        for old, new in (
-            replacements.items()
-        ):
-
-            text = text.replace(
-                old,
-                new
-            )
-
-        text = re.sub(
-            r"\s+",
-            " ",
-            text
-        ).strip()
-
-        return text
 
     # ──────────────────────────────────────
     # Fuzzy Contains
@@ -114,7 +215,7 @@ class IntentService:
 
         normalized_keywords = [
 
-            self.normalize_text(
+            TextNormalizer.normalize(
                 keyword
             )
 
@@ -154,7 +255,7 @@ class IntentService:
         context: SessionContext,
     ):
 
-        text = self.normalize_text(
+        text = TextNormalizer.normalize(
             message
         )
 

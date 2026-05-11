@@ -1,7 +1,6 @@
 class ResponseFormatter:
     """
     Formatter ب tone مصري friendly
-    بيرجع بيانات منظمة: ID واضح + أهم التفاصيل بس
     """
 
     def format_rooms(self, rooms, filters=None, expanded=False, has_more=False, page_num=1) -> str:
@@ -29,23 +28,20 @@ class ResponseFormatter:
             gov = room.get("Government") or ""
             street = room.get("Street", "")
 
-            # Location line
             loc_parts = [p for p in [city, gov] if p]
             location = ", ".join(loc_parts) if loc_parts else "موقع غير محدد"
             if street:
                 location += f" — {street}"
 
-            # Price
             rent = room.get("Month_rent")
             if rent is not None and rent > 0:
                 price = f"💰 {int(rent):,} جنيه/شهر"
             else:
-                price = "💰 السعر غير متاح"
+                price = "💰 السعر: متاح عند التواصل 📞"
 
             deposit = room.get("Deposit")
             deposit_line = f"🔑 تأمين: {int(deposit):,} جنيه" if deposit else ""
 
-            # Badges - أهم الحاجات بس
             badges = []
             cap = room.get("Capacity", 1)
             cap_avail = room.get("CapacityAvailable", 0)
@@ -103,7 +99,16 @@ class ResponseFormatter:
 
         lines = []
         total_label = f"صفحة {page_num}" if page_num > 1 else ""
-        header = f"🏠 لقيتلك {len(properties)} شقة"
+
+        # Determine header based on search type
+        search_type = filters.search_type if filters else "property"
+        if search_type == "shared":
+            header = f"🏠 لقيتلك {len(properties)} شقة مشتركة"
+        elif search_type == "full":
+            header = f"🏠 لقيتلك {len(properties)} شقة كاملة"
+        else:
+            header = f"🏠 لقيتلك {len(properties)} شقة"
+
         if total_label:
             header += f" ({total_label})"
         if expanded:
@@ -120,24 +125,53 @@ class ResponseFormatter:
             loc_parts = [p for p in [city, gov] if p]
             location = ", ".join(loc_parts) if loc_parts else "موقع غير محدد"
 
-            # Price
+            # Price based on type
             rent = prop.get("MonthlyRent")
-            if rent is not None and rent > 0:
-                price = f"💰 {int(rent):,} جنيه/شهر"
+            room_min = prop.get("RoomMinPrice")
+            room_max = prop.get("RoomMaxPrice")
+            room_count = prop.get("TotalRoomsCount", 0)
+
+            if search_type == "shared":
+                # Shared apartment: price per room
+                if room_min is not None and room_min > 0:
+                    if room_max and room_max > room_min:
+                        price = f"💰 من {int(room_min):,} لـ {int(room_max):,} جنيه/أوضة"
+                    else:
+                        price = f"💰 {int(room_min):,} جنيه/أوضة"
+                else:
+                    price = "💰 السعر: متاح عند التواصل 📞"
             else:
-                price = "💰 السعر غير متاح"
+                # Full apartment or ALL: show total price if available
+                if rent is not None and rent > 0:
+                    price = f"💰 {int(rent):,} جنيه/شهر"
+                elif room_min is not None and room_min > 0:
+                    # If no total price but has room prices, show range
+                    if room_max and room_max > room_min:
+                        price = f"💰 من {int(room_min):,} لـ {int(room_max):,} جنيه/أوضة"
+                    else:
+                        price = f"💰 {int(room_min):,} جنيه/أوضة"
+                else:
+                    price = "💰 السعر: متاح عند التواصل 📞"
 
             deposit = prop.get("Deposite")
             deposit_line = f"🔑 تأمين: {int(deposit):,} جنيه" if deposit else ""
 
-            # Details - أهم الحاجات بس
+            # Details
             details = []
             total_rooms = prop.get("TotalRooms")
             avail_rooms = prop.get("AvailableRooms")
-            if total_rooms:
-                details.append(f"🚪 {total_rooms} غرف")
-            if avail_rooms is not None:
-                details.append(f"✅ {avail_rooms} متاحة")
+
+            if search_type == "shared":
+                if room_count > 0:
+                    details.append(f"🚪 {room_count} أوض")
+                if avail_rooms is not None:
+                    details.append(f"✅ {avail_rooms} متاحة")
+            else:
+                if total_rooms:
+                    details.append(f"🚪 {total_rooms} غرف")
+                if avail_rooms is not None:
+                    details.append(f"✅ {avail_rooms} متاحة")
+
             size = prop.get("Size")
             if size:
                 details.append(f"📐 {int(size)} م²")
@@ -176,19 +210,29 @@ class ResponseFormatter:
         elif page_num > 1:
             lines.append("✅ دي كانت آخر النتائج")
 
-        lines.append(f"\n💬 {self._get_smart_suggestion(filters, 'property')}")
+        lines.append(f"\n💬 {self._get_smart_suggestion(filters, search_type)}")
         return "\n".join(lines)
 
+    # Diverse governorates for smart suggestions (Ismailia highlighted)
+    _GOVERNORATE_SUGGESTIONS = [
+        '"في الإسماعيلية"', '"في الإسكندرية"', '"في القاهرة"',
+        '"في طنطا"', '"في أسوان"', '"في المنصورة"',
+        '"في سوهاج"', '"في قنا"', '"في الغردقة"',
+    ]
+
     def _get_smart_suggestion(self, filters, search_type: str) -> str:
-        """اقتراح ذكي بناءً على الفلاتر الحالية"""
         if not filters:
             return "قولي لو عايز تصفية تانية أو مدينة مختلفة! 👇"
 
         suggestions = []
 
         if not filters.city:
-            suggestions.append('"في القاهرة"')
-            suggestions.append('"في إسماعيلية"')
+            # Pick 2 diverse governorates (Ismailia always first for priority)
+            from random import sample
+            picks = ['"في الإسماعيلية"']
+            other = [g for g in self._GOVERNORATE_SUGGESTIONS if g != '"في الإسماعيلية"']
+            picks.extend(sample(other, min(1, len(other))))
+            suggestions.extend(picks)
 
         if not filters.max_price and not filters.min_price:
             suggestions.append('"تحت 5000"')
@@ -201,16 +245,15 @@ class ResponseFormatter:
                 suggestions.append('"فيها واي فاي"')
             if not filters.air_conditioning:
                 suggestions.append('"فيها تكييف"')
+        elif search_type == "shared":
+            suggestions.append('"شباب"')
+            suggestions.append('"بنات"')
 
         if not filters.furnished:
             suggestions.append('"مفروشة"')
 
         if not filters.tenant_type:
             suggestions.append('"للطلاب"')
-
-        if not filters.gender:
-            suggestions.append('"شباب"')
-            suggestions.append('"بنات"')
 
         if suggestions:
             return f"ممكن تجرب: {', '.join(suggestions[:4])}"

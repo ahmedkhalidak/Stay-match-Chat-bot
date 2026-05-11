@@ -1,6 +1,5 @@
 """
-SearchService — المحرك الرئيسي للـ chatbot (نسخة محسّنة + LangChain + Pagination)
-Flow محترم ومصري فريندلي 🇪🇬
+SearchService — المحرك الرئيسي للـ chatbot
 """
 
 import hashlib
@@ -8,11 +7,11 @@ import json
 from app.core.memory_store import memory_store
 from app.core.session_context import SessionContext
 from app.models.search_models import SearchFilters
-from app.extractors.query_extractor import QueryExtractor
-from app.extractors.filter_extractor import FilterExtractor
+from app.nlp.nlp_pipeline import NLPPipeline
 from app.services.knowledge_service import KnowledgeService
 from app.services.chat_service import ChatService
 from app.services.location_service import LocationService
+from app.services.conversation_flow import ConversationFlow
 from app.database.repositories.room_repository import RoomRepository
 from app.database.repositories.property_repository import PropertyRepository
 from app.formatters.response_formatter import ResponseFormatter
@@ -22,14 +21,14 @@ from app.utils.logger import debug_log
 class SearchService:
 
     def __init__(self):
-        self.query_extractor = QueryExtractor()
-        self.filter_extractor = FilterExtractor()
+        self.nlp_pipeline = NLPPipeline()
         self.room_repo = RoomRepository()
         self.property_repo = PropertyRepository()
         self.formatter = ResponseFormatter()
         self.knowledge = KnowledgeService()
         self.chat = ChatService()
         self.location_service = LocationService()
+        self.flow = ConversationFlow()
 
     def _filters_hash(self, filters: SearchFilters) -> str:
         data = json.dumps(filters.model_dump(), sort_keys=True, default=str)
@@ -50,26 +49,30 @@ class SearchService:
         debug_log("TURN", context.turn_count)
         debug_log("MESSAGE", message)
 
-        # ── 2. AI Extraction ─────────────────────
-        filters = self.query_extractor.extract(message, history_text)
-        debug_log("AI_FILTERS", filters.model_dump())
+        # ── 1. NLPPipeline ───────────────────────
+        filters = self.nlp_pipeline.extract(
+            message=message,
+            history=history_text,
+            last_search=context.last_search,
+        )
+        debug_log("PIPELINE_FILTERS", filters.model_dump())
 
         intent = filters.intent or "invalid"
 
-        # ── 3. Special intents ───────────────────
+        # ── 2. Special intents ───────────────────
         if intent == "show_more":
             return self._handle_show_more(session_id, context, message)
 
         if intent == "go_back":
             return self._handle_go_back(session_id, context, message)
 
-        # ── 4. Pending slot ──────────────────────
+        # ── 3. Pending slot ──────────────────────
         if context.pending_slot:
             reply = self._handle_pending_slot(session_id, context, message, filters)
             self._save_turn(session_id, context, message, reply)
             return reply
 
-        # ── 5. Intent routing ────────────────────
+        # ── 4. Intent routing ────────────────────
         if intent == "small_talk":
             reply = self.chat.generate_reply(message)
             self._save_turn(session_id, context, message, reply)
@@ -83,43 +86,36 @@ class SearchService:
 
         if intent == "invalid":
             answer = self.knowledge.find_answer(message)
-            reply = answer if answer else "أنا بساعدك تلاقي أوضة أو شقة مناسبة في StayMatch 😊\nقولي مثلاً: \"عايز شقة في القاهرة تحت 5000\""
+            reply = answer if answer else (
+                "أنا بساعدك تلاقي أوضة أو شقة مناسبة في StayMatch 😊\n"
+                "قولي مثلاً: \"عايز شقة في الإسماعيلية تحت 5000\"\n"
+                "أو \"أوضة في الإسكندرية\" أو \"شقة كاملة في طنطا\""
+            )
             self._save_turn(session_id, context, message, reply)
             return reply
 
-        # ── 6. Follow-up / Clarification / New ───
-        if intent == "follow_up" and context.last_search:
-            debug_log("FLOW", "FOLLOW_UP_MERGE")
-            filters = self.query_extractor.merge_filters(context.last_search, filters)
-            if not filters.search_type:
-                filters.search_type = context.last_search.search_type
+        # ── 5. Apply stored user preferences ─────
+        filters = self.flow.apply_preferences_to_filters(context, filters)
+        debug_log("PREF_APPLIED", filters.model_dump())
 
-        elif intent == "remove_filter" and context.last_search:
-            debug_log("FLOW", "REMOVE_FILTER")
-            filters = self._handle_remove_filter(context.last_search, filters)
-
-        elif intent == "clarification" and context.last_search:
-            debug_log("FLOW", "CLARIFICATION_MERGE")
-            filters = self.query_extractor.merge_filters(context.last_search, filters)
-
-        else:
-            debug_log("FLOW", "NEW_SEARCH")
-            if not filters.search_type and context.last_search:
-                filters.search_type = context.last_search.search_type
-
-        # ── 7. Check missing info (Egyptian friendly) ─
-        clarification = self._check_missing(session_id, context, filters)
+        # ── 6. Smart missing info check ──────────
+        context.update_preferences(filters)
+        clarification, slot = self.flow.get_next_clarification(context, filters)
         if clarification:
+            context.pending_slot = slot
+            context.last_search = filters
+            memory_store.update_context(session_id, context)
             self._save_turn(session_id, context, message, clarification)
             return clarification
 
-        # ── 8. Defaults & Reset pagination ───────
+        # ── 7. Defaults & Reset pagination ───────
         if not filters.sort_by:
             filters.sort_by = "relevance"
         context.reset_pagination()
 
-        # ── 9. Execute search ────────────────────
+        # ── 8. Execute search ────────────────────
         context.last_search = filters
+        context.pending_slot = None
         memory_store.update_context(session_id, context)
 
         reply = self._execute_search(session_id, filters, context)
@@ -128,7 +124,7 @@ class SearchService:
 
     def _handle_show_more(self, session_id: str, context: SessionContext, message: str) -> str:
         if not context.last_search:
-            return "مفيش بحث قبل كده يا صاحبي 😅\nقولي \"عايز شقة في القاهرة\" مثلاً!"
+            return "مفيش بحث قبل كده يا صاحبي 😅\nقولي \"عايز شقة في الإسماعيلية\" مثلاً!"
 
         filters = context.last_search
         context.current_offset += context.page_size
@@ -151,17 +147,6 @@ class SearchService:
         self._save_turn(session_id, context, message, reply)
         return reply
 
-    def _handle_remove_filter(self, base: SearchFilters, update: SearchFilters) -> SearchFilters:
-        merged = base.model_copy(deep=True)
-        for field, value in update.model_dump().items():
-            if field == "intent":
-                continue
-            if value is False:
-                setattr(merged, field, None)
-            elif value is not None:
-                setattr(merged, field, value)
-        return merged
-
     def _handle_pending_slot(self, session_id: str, context: SessionContext,
                              message: str, new_filters: SearchFilters) -> str:
 
@@ -172,12 +157,16 @@ class SearchService:
             msg = message.lower()
             if any(k in msg for k in ["اوضة", "اوضه", "غرفة", "room", "أوضة", "غرفه"]):
                 base.search_type = "room"
+            elif any(k in msg for k in ["شقة مشتركة", "مشتركة", "shared", "roommate", "مع ناس"]):
+                base.search_type = "shared"
+            elif any(k in msg for k in ["شقة كاملة", "كاملة", "full", "لوحدي", "لنفسي"]):
+                base.search_type = "full"
             elif any(k in msg for k in ["شقة", "شقه", "apartment", "شقق", "سكن"]):
                 base.search_type = "property"
             else:
                 base.search_type = new_filters.search_type or base.search_type
 
-        elif slot == "city":
+        elif slot == "location":
             if new_filters.city:
                 base.city = new_filters.city
             elif new_filters.governorate:
@@ -190,10 +179,52 @@ class SearchService:
                     else:
                         base.governorate = loc["en"]
 
-        context.pending_slot = None
+        elif slot == "price":
+            price_data = new_filters
+            if price_data.max_price:
+                base.max_price = price_data.max_price
+            if price_data.min_price:
+                base.min_price = price_data.min_price
+            # Also try regex from raw message
+            from app.extractors.price_extractor import PriceExtractor
+            pe = PriceExtractor()
+            extracted = pe.extract(message)
+            if extracted["max_price"]:
+                base.max_price = extracted["max_price"]
+            if extracted["min_price"]:
+                base.min_price = extracted["min_price"]
+            if base.min_price is None and base.max_price is None:
+                # User said "any" or didn't specify
+                pass  # Keep as None (no price filter)
 
-        clarification = self._check_missing(session_id, context, base)
+        elif slot == "tenant_type":
+            msg = message.lower()
+            if any(k in msg for k in ["طالب", "طلاب", "student", "سكن طلبه"]):
+                base.tenant_type = "student"
+            elif any(k in msg for k in ["موظف", "موظفين", "worker", "عامل"]):
+                base.tenant_type = "worker"
+            if any(k in msg for k in ["شباب", "ولاد", "boys", "male", "رجاله"]):
+                base.gender = "male"
+            elif any(k in msg for k in ["بنات", "girls", "female", "سيدات", "ladies"]):
+                base.gender = "female"
+
+        elif slot == "furnished":
+            msg = message.lower()
+            if any(k in msg for k in ["مفروش", "مفروشة", "furnished"]):
+                base.furnished = True
+            elif any(k in msg for k in ["غير مفروش", "unfurnished", "فاضيه"]):
+                base.furnished = False
+            # Any other response = no preference
+
+        context.pending_slot = None
+        context.update_preferences(base)
+
+        # Re-run flow check
+        clarification, next_slot = self.flow.get_next_clarification(context, base)
         if clarification:
+            context.pending_slot = next_slot
+            context.last_search = base
+            memory_store.update_context(session_id, context)
             return clarification
 
         if not base.sort_by:
@@ -201,56 +232,9 @@ class SearchService:
 
         context.last_search = base
         context.reset_pagination()
+        context.pending_slot = None
         memory_store.update_context(session_id, context)
         return self._execute_search(session_id, base, context)
-
-    def _check_missing(self, session_id: str, context: SessionContext,
-                       filters: SearchFilters) -> str | None:
-        """يسأل بطريقة مصرية فريندلي لو فيه معلومات ناقصة"""
-
-        if not filters.search_type:
-            context.pending_slot = "search_type"
-            context.last_search = filters
-            memory_store.update_context(session_id, context)
-            return (
-                "أهلاً بيك في StayMatch! 😄\n"
-                "عايز تسكن إزاي؟\n\n"
-                "1️⃣ شقة كاملة (ليك لوحدك أو مع صحابك)\n"
-                "2️⃣ أوضة في شقة مشتركة (مع roommates)\n\n"
-                "قولي \"شقة\" أو \"أوضة\" وانا هساعدك 👇"
-            )
-
-        if filters.search_type == "room" and not filters.city and not filters.governorate:
-            context.pending_slot = "city"
-            context.last_search = filters
-            memory_store.update_context(session_id, context)
-            return (
-                "تمام، عايز الأوضة فين؟ 📍\n\n"
-                "ممكن تقولي اسم المدينة أو المنطقة، مثلاً:\n"
-                "• القاهرة\n"
-                "• مدينة نصر\n"
-                "• إسماعيلية\n"
-                "• المعادي\n\n"
-                "أو اكتب أي منطقة انت عايزها 👇"
-            )
-
-        if filters.search_type == "property" and not filters.city and not filters.governorate:
-            # للشقق: نسأل بس مش نلزم (ممكن يبحث في كل مصر)
-            # بس لو هو قال "عايز شقة" بس، نسأله عشان النتائج تبقى أحسن
-            context.pending_slot = "city"
-            context.last_search = filters
-            memory_store.update_context(session_id, context)
-            return (
-                "عايز الشقة فين بالظبط؟ 📍\n\n"
-                "ممكن تقولي المدينة أو المنطقة، زي:\n"
-                "• القاهرة\n"
-                "• إسماعيلية\n"
-                "• مدينة نصر\n"
-                "• الشروق\n\n"
-                "أو قولي \"أي مكان\" وهدورلك في كل المحافظات 😎"
-            )
-
-        return None
 
     def _execute_search(self, session_id: str, filters: SearchFilters, context: SessionContext) -> str:
 
@@ -270,8 +254,8 @@ class SearchService:
                 next_page = self.room_repo.search(filters, offset=offset + limit, limit=1)
                 has_more = len(next_page) > 0
 
-            elif filters.search_type == "property":
-                debug_log("SEARCH", f"property offset={offset} limit={limit}")
+            elif filters.search_type in ("property", "full", "shared"):
+                debug_log("SEARCH", f"{filters.search_type} offset={offset} limit={limit}")
                 page_results = self.property_repo.search(filters, offset=offset, limit=limit)
                 next_page = self.property_repo.search(filters, offset=offset + limit, limit=1)
                 has_more = len(next_page) > 0
@@ -285,16 +269,51 @@ class SearchService:
             else:
                 context.cached_results.extend(list(page_results))
 
+        # ── No results — smart context-aware message ─
+        if not page_results and offset == 0:
+            location_name = filters.city or filters.governorate or "المنطقة دي"
+            search_type_name = {
+                "room": "أوض",
+                "property": "شقق",
+                "full": "شقق كاملة",
+                "shared": "شقق مشتركة",
+            }.get(filters.search_type, "شقق")
+
+            no_results_msg = (
+                f"مش لاقي {search_type_name} في {location_name} حالياً 😅\n\n"
+                f"ممكن تجرب:\n"
+                f"• مدينة تانية (زي \"الإسماعيلية\" أو \"الإسكندرية\" أو \"طنطا\")\n"
+                f"• غيّر السعر (مثلاً \"تحت 10000\")\n"
+                f"• أو قولي \"أي مكان\" وهدورلك في كل مصر 😎"
+            )
+            context.push_search(filters, 0)
+            memory_store.update_context(session_id, context)
+            return no_results_msg
+
         context.last_results_count = len(page_results)
         memory_store.update_context(session_id, context)
 
         if offset == 0:
             context.push_search(filters, len(page_results))
+            # Mark seen IDs
+            if filters.search_type == "room":
+                ids = [r.get("Id") for r in page_results if r.get("Id")]
+                context.mark_seen(room_ids=ids)
+            else:
+                ids = [r.get("Id") for r in page_results if r.get("Id")]
+                context.mark_seen(property_ids=ids)
             memory_store.update_context(session_id, context)
 
         if filters.search_type == "room":
             reply = self.formatter.format_rooms(page_results, filters, has_more=has_more, page_num=page_num)
         else:
             reply = self.formatter.format_properties(page_results, filters, has_more=has_more, page_num=page_num)
+
+        # Append smart follow-up (no LLM — pure logic)
+        followup = self.flow.build_smart_followup(
+            context, filters, len(page_results), has_more
+        )
+        if followup:
+            reply += "\n\n" + followup
 
         return reply

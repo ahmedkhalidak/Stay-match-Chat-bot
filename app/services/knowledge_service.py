@@ -58,12 +58,12 @@ class KnowledgeService:
             debug_log("KNOWLEDGE KEYWORD", best_q)
             return self.answer_map[best_q]
 
-        # 3. Fuzzy match كـ fallback بـ cutoff أعلى (0.65)
+        # 3. Fuzzy match كـ fallback بـ  أعلى (0.65)
         matches = difflib.get_close_matches(
             msg_norm,
             self.questions,
             n=1,
-            cutoff=0.65,  # BUG FIX: كان 0.55 (منخفض جداً)
+            cutoff=0.65,  
         )
 
         if matches:
