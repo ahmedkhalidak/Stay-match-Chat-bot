@@ -2,9 +2,14 @@
 ParsedMessage — Intermediate Representation
 بيمثل كل حاجة استخرجناها من الرسالة قبل ما نحولها لـ SearchFilters
 """
+from __future__ import annotations
+from app.models.search_models import SearchFilters
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
+
+if TYPE_CHECKING:
+    from app.models.search_models import SearchFilters
 
 
 class LocationResult(BaseModel):
@@ -68,7 +73,7 @@ class ParsedMessage(BaseModel):
 
     def to_search_filters(self) -> "SearchFilters":
         """يحول ParsedMessage → SearchFilters"""
-        from app.models.search_models import SearchFilters
+        
 
         filters = SearchFilters()
         filters.intent = self.intent
@@ -105,20 +110,25 @@ class ParsedMessage(BaseModel):
         return filters
 
     def calculate_overall_confidence(self) -> float:
-        """بيحسب الثقة الإجمالية"""
-        scores = [
-            self.intent_confidence * 0.35,
-            self.location_confidence * 0.25,
-            self.price_confidence * 0.15,
-        ]
+        """بيحسب الثقة الإجمالية بناءً على مدى وضوح المدخلات"""
+        if self.intent in ["small_talk", "faq", "show_more", "go_back", "clarification"]:
+            self.overall_confidence = 1.0
+            return self.overall_confidence
 
-        # Amenities confidence
+        if self.intent == "invalid" and not self.location:
+            self.overall_confidence = 0.0
+            return 0.0
+
+        # We take the max of intent or location confidence as a baseline
+        conf = max(self.intent_confidence, self.location_confidence)
+        
+        # Boost confidence slightly if we successfully found other elements
+        if self.price:
+            conf = min(conf + 0.1, 1.0)
         if self.amenities:
-            scores.append(0.15)
-
-        # Search type confidence
+            conf = min(conf + 0.1, 1.0)
         if self.search_type:
-            scores.append(0.10)
+            conf = min(conf + 0.1, 1.0)
 
-        self.overall_confidence = min(sum(scores), 1.0)
+        self.overall_confidence = conf
         return self.overall_confidence

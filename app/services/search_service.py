@@ -54,6 +54,7 @@ class SearchService:
             message=message,
             history=history_text,
             last_search=context.last_search,
+            pending_slot=context.pending_slot
         )
         debug_log("PIPELINE_FILTERS", filters.model_dump())
 
@@ -66,13 +67,7 @@ class SearchService:
         if intent == "go_back":
             return self._handle_go_back(session_id, context, message)
 
-        # ── 3. Pending slot ──────────────────────
-        if context.pending_slot:
-            reply = self._handle_pending_slot(session_id, context, message, filters)
-            self._save_turn(session_id, context, message, reply)
-            return reply
-
-        # ── 4. Intent routing ────────────────────
+        # ── 3. Intent routing ────────────────────
         if intent == "small_talk":
             reply = self.chat.generate_reply(message)
             self._save_turn(session_id, context, message, reply)
@@ -88,7 +83,7 @@ class SearchService:
             answer = self.knowledge.find_answer(message)
             reply = answer if answer else (
                 "أنا بساعدك تلاقي أوضة أو شقة مناسبة في StayMatch 😊\n"
-                "قولي مثلاً: \"عايز شقة في الإسماعيلية تحت 5000\"\n"
+                "قولي مثلاً: \"عايز شقة في الإسماعيلية  \"\n"
                 "أو \"أوضة في الإسكندرية\" أو \"شقة كاملة في طنطا\""
             )
             self._save_turn(session_id, context, message, reply)
@@ -124,7 +119,7 @@ class SearchService:
 
     def _handle_show_more(self, session_id: str, context: SessionContext, message: str) -> str:
         if not context.last_search:
-            return "مفيش بحث قبل كده يا صاحبي 😅\nقولي \"عايز شقة في الإسماعيلية\" مثلاً!"
+            return "      \nقولي \"عايز شقة في الإسماعيلية\" مثلاً!"
 
         filters = context.last_search
         context.current_offset += context.page_size
@@ -137,7 +132,7 @@ class SearchService:
     def _handle_go_back(self, session_id: str, context: SessionContext, message: str) -> str:
         prev_filters = context.go_back()
         if not prev_filters:
-            return "مفيش بحث قبل كده يا صاحبي 😅"
+            return "مفيش بحث قبل كده   😅"
 
         context.reset_pagination()
         context.last_search = prev_filters
@@ -146,95 +141,6 @@ class SearchService:
         reply = self._execute_search(session_id, prev_filters, context)
         self._save_turn(session_id, context, message, reply)
         return reply
-
-    def _handle_pending_slot(self, session_id: str, context: SessionContext,
-                             message: str, new_filters: SearchFilters) -> str:
-
-        slot = context.pending_slot
-        base = context.last_search or SearchFilters()
-
-        if slot == "search_type":
-            msg = message.lower()
-            if any(k in msg for k in ["اوضة", "اوضه", "غرفة", "room", "أوضة", "غرفه"]):
-                base.search_type = "room"
-            elif any(k in msg for k in ["شقة مشتركة", "مشتركة", "shared", "roommate", "مع ناس"]):
-                base.search_type = "shared"
-            elif any(k in msg for k in ["شقة كاملة", "كاملة", "full", "لوحدي", "لنفسي"]):
-                base.search_type = "full"
-            elif any(k in msg for k in ["شقة", "شقه", "apartment", "شقق", "سكن"]):
-                base.search_type = "property"
-            else:
-                base.search_type = new_filters.search_type or base.search_type
-
-        elif slot == "location":
-            if new_filters.city:
-                base.city = new_filters.city
-            elif new_filters.governorate:
-                base.governorate = new_filters.governorate
-            else:
-                loc = self.location_service.detect_location(message)
-                if loc:
-                    if loc["type"] == "city":
-                        base.city = loc["en"]
-                    else:
-                        base.governorate = loc["en"]
-
-        elif slot == "price":
-            price_data = new_filters
-            if price_data.max_price:
-                base.max_price = price_data.max_price
-            if price_data.min_price:
-                base.min_price = price_data.min_price
-            # Also try regex from raw message
-            from app.extractors.price_extractor import PriceExtractor
-            pe = PriceExtractor()
-            extracted = pe.extract(message)
-            if extracted["max_price"]:
-                base.max_price = extracted["max_price"]
-            if extracted["min_price"]:
-                base.min_price = extracted["min_price"]
-            if base.min_price is None and base.max_price is None:
-                # User said "any" or didn't specify
-                pass  # Keep as None (no price filter)
-
-        elif slot == "tenant_type":
-            msg = message.lower()
-            if any(k in msg for k in ["طالب", "طلاب", "student", "سكن طلبه"]):
-                base.tenant_type = "student"
-            elif any(k in msg for k in ["موظف", "موظفين", "worker", "عامل"]):
-                base.tenant_type = "worker"
-            if any(k in msg for k in ["شباب", "ولاد", "boys", "male", "رجاله"]):
-                base.gender = "male"
-            elif any(k in msg for k in ["بنات", "girls", "female", "سيدات", "ladies"]):
-                base.gender = "female"
-
-        elif slot == "furnished":
-            msg = message.lower()
-            if any(k in msg for k in ["مفروش", "مفروشة", "furnished"]):
-                base.furnished = True
-            elif any(k in msg for k in ["غير مفروش", "unfurnished", "فاضيه"]):
-                base.furnished = False
-            # Any other response = no preference
-
-        context.pending_slot = None
-        context.update_preferences(base)
-
-        # Re-run flow check
-        clarification, next_slot = self.flow.get_next_clarification(context, base)
-        if clarification:
-            context.pending_slot = next_slot
-            context.last_search = base
-            memory_store.update_context(session_id, context)
-            return clarification
-
-        if not base.sort_by:
-            base.sort_by = "relevance"
-
-        context.last_search = base
-        context.reset_pagination()
-        context.pending_slot = None
-        memory_store.update_context(session_id, context)
-        return self._execute_search(session_id, base, context)
 
     def _execute_search(self, session_id: str, filters: SearchFilters, context: SessionContext) -> str:
 

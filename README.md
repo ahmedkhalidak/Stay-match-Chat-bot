@@ -35,3 +35,6 @@ ConversationManager
     └── Clarifications
 
 ResponseFormatter
+
+-> docker start sqlserver 
+-> uvicorn app.main:app --host 0.0.0.0 --port 8000

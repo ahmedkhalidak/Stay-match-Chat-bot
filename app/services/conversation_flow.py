@@ -152,15 +152,14 @@ class ConversationFlow:
             if context.no_results_count >= 2:
                 parts.append(
                     "مش لاقي حاجة مناسبة ليك في المناطق دي 😅\n"
-                    "ممكن تجرب محافظة تانية زي الإسماعيلية أو الإسكندرية!"
+                    "ممكن تجرب منظقة تانية زي  !"
                 )
             else:
                 parts.append(
                     "مش لاقي نتائج بالمواصفات دي 🤔\n"
                     "ممكن تجرب:\n"
-                    "• غيّر السعر (مثلاً \"تحت 10000\")\n"
+                    "• غيّر السعر (مثلاً "
                     "• مدينة تانية\n"
-                    '• أو قولي \"أي مكان\"'
                 )
             return "\n\n".join(parts)
 
@@ -184,7 +183,7 @@ class ConversationFlow:
 
         # Suggest location change
         if context.total_searches >= 2:
-            suggestions.append('محافظة تانية زي "الإسماعيلية"')
+            suggestions.append('محافظة تانية  ""')
 
         # Suggest tenant type
         if filters.search_type in ("room", "shared") and p.tenant_type is None:

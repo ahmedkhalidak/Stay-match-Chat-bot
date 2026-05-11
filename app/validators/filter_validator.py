@@ -2,7 +2,7 @@ from app.models.search_models import (
     SearchFilters,
 )
 
-from app.ranking.services.location_service import (
+from app.services.location_service import (
     LocationService,
 )
 

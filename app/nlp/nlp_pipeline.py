@@ -96,7 +96,7 @@ class NLPPipeline:
         self.followup_extractor = FollowUpExtractor()
         self.llm_extractor = QueryExtractor()
 
-    def extract(self, message: str, history: str = "", last_search: SearchFilters = None) -> SearchFilters:
+    def extract(self, message: str, history: str = "", last_search: SearchFilters = None, pending_slot: str = None) -> SearchFilters:
         debug_log("PIPELINE_START", message)
 
         normalized = TextNormalizer.normalize(message)
@@ -132,6 +132,9 @@ class NLPPipeline:
         self._determine_search_type(parsed)
         debug_log("SEARCH_TYPE", parsed.search_type)
 
+        if pending_slot:
+            self._handle_slot_reply(parsed, pending_slot)
+
         parsed.calculate_overall_confidence()
         debug_log("CONFIDENCE", parsed.overall_confidence)
 
@@ -142,7 +145,7 @@ class NLPPipeline:
             parsed.llm_reason = "Rules sufficient — no LLM needed"
             debug_log("PIPELINE", "Rules sufficient — skipping LLM")
 
-        if last_search and parsed.intent in ("follow_up", "clarification"):
+        if last_search and (parsed.intent in ("follow_up", "clarification") or pending_slot):
             parsed = self._merge_with_last_search(parsed, last_search)
 
         filters = parsed.to_search_filters()
@@ -192,14 +195,14 @@ class NLPPipeline:
         if intent_scores:
             best_intent = max(intent_scores, key=intent_scores.get)
             parsed.intent = best_intent
-            parsed.intent_confidence = min(intent_scores[best_intent] / 2, 1.0)
+            parsed.intent_confidence = min(intent_scores[best_intent], 1.0)
         else:
             parsed.intent = "invalid"
             parsed.intent_confidence = 0.0
 
         if parsed.intent == "invalid" and parsed.location:
             parsed.intent = "clarification"
-            parsed.intent_confidence = 0.6
+            parsed.intent_confidence = 0.8
 
     def _extract_location(self, parsed: ParsedMessage):
         loc = self.location_service.detect_location(parsed.raw_text)
@@ -282,6 +285,38 @@ class NLPPipeline:
                     parsed.sort_by = sort_type
                     return
 
+    def _handle_slot_reply(self, parsed: ParsedMessage, pending_slot: str):
+        text = parsed.normalized_text
+        
+        yes_words = ["اه", "ايوه", "نعم", "ياريت", "اكيد", "ايوا"]
+        no_words = ["لا", "لأ", "مش", "بدون", "شكرا"]
+        any_words = ["اي", "اي حاجة", "مش فارقة", "اي حد", "كله شغال", "مش مهم"]
+        
+        is_yes = any(text == w for w in yes_words) or any(w in text.split() for w in yes_words)
+        is_no = any(text == w for w in no_words) or any(w in text.split() for w in no_words)
+        is_any = any(text == w for w in any_words) or any(w in text for w in any_words)
+
+        # If it's a slot reply, confidence is high
+        parsed.intent = "clarification"
+        parsed.intent_confidence = 1.0
+
+        if pending_slot == "furnished":
+            if is_any:
+                parsed.amenities["furnished"] = None
+            elif is_yes or "مفروش" in text:
+                parsed.amenities["furnished"] = True
+            elif is_no or "فاضي" in text or "غير مفروش" in text:
+                parsed.amenities["furnished"] = False
+
+        elif pending_slot == "tenant_type":
+            if is_any:
+                parsed.tenant_type = "any"
+                parsed.gender = "any"
+
+        elif pending_slot == "price":
+            if is_any or is_no:
+                parsed.price = None
+                
     def _determine_search_type(self, parsed: ParsedMessage):
         """بيحدد نوع البحث"""
         text = parsed.normalized_text
