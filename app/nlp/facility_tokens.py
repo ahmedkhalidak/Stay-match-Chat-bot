@@ -15,6 +15,9 @@ FACILITY_TOKENS = {
     "ac": "مكيف",
 
     # bathroom
+    "حمام_خاص": "حمام_خاص",
+    "private_bathroom": "حمام_خاص",
+    "privatebathroom": "حمام_خاص",
     "حمام": "حمام",
     "bathroom": "حمام",
     "toilet": "حمام",

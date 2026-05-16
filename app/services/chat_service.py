@@ -25,7 +25,7 @@ class ChatService:
         )
 
         text = re.sub(
-            r"(.)\1+",
+            r"([^\d])\1{2,}",
             r"\1",
             text
         )

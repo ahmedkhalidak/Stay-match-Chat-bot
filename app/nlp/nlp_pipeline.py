@@ -2,10 +2,24 @@
 NLPPipeline — المحرك الرئيسي للـ NLP
 """
 
-import re
-from typing import Optional
 from app.nlp.parsed_message import ParsedMessage, LocationResult, PriceResult
 from app.nlp.token_map import TOKEN_MAP
+from app.nlp.lexicon import (
+    AMENITY_KEYWORDS,
+    FULL_KEYWORDS,
+    GENDER_KEYWORDS,
+    INTENT_KEYWORDS,
+    NEGATION_WORDS,
+    PROPERTY_NOUNS,
+    ROOM_NOUNS,
+    SEARCH_TYPE_BLOCKED_INTENTS,
+    SHARED_KEYWORDS,
+    SLOT_REPLY_ANY_WORDS,
+    SLOT_REPLY_NO_WORDS,
+    SLOT_REPLY_YES_WORDS,
+    SORT_KEYWORDS,
+    TENANT_KEYWORDS,
+)
 from app.models.search_models import SearchFilters
 from app.services.location_service import LocationService
 from app.extractors.price_extractor import PriceExtractor
@@ -13,88 +27,19 @@ from app.extractors.followup_extractor import FollowUpExtractor
 from app.extractors.query_extractor import QueryExtractor
 from app.utils.text_normalizer import TextNormalizer
 from app.utils.logger import debug_log
+from app.validators.filter_validator import FilterValidator
 
 
 class NLPPipeline:
 
     CONFIDENCE_THRESHOLD = 0.65
 
-    INTENT_KEYWORDS = {
-        "room_search": [
-            "غرفه", "room", "bedroom", "studio", "سنجل", "single",
-            "مشترك", "shared", "roommate", "اوضة", "اوضه", "غرفة",
-            "خاص", "private", "فردي", "طلبه", "students", "بنات", "شباب",
-        ],
-        "property_search": [
-            "شقه", "apartment", "flat", "property", "house", "home",
-            "villa", "منزل", "عقار", "وحده", "عماره", "مبني",
-            "شقة", "شقق", "سكن",
-        ],
-        "follow_up": [
-            "ارخص", "رخيص", "cheap", "اقل", "lower",
-            "اغلى", "غالي", "expensive", "اعلى", "higher",
-            "تحت", "فوق", "سعر", "price", "budget",
-            "مفروش", "مكيف", "wifi", "واي", "انترنت",
-            "بلكونه", "حمام", "مطبخ", "غساله", "ثلاجه",
-            "قريب", "بعيد", "هادئ", "واسع", "نضيف",
-            "بدل", "شيل", "غير", "مش عايز",
-        ],
-        "show_more": [
-            "كمان", "المزيد", "تاني", "more", "next", "show",
-            "باقي", "بقية", "كمل", "continue",
-        ],
-        "go_back": [
-            "ارجع", "اللي فات", "قبل", "back", "previous",
-            "رجوع", "السابق",
-        ],
-        "small_talk": [
-            "ازيك", "اخبارك", "عامل", "صباح", "مساء", "هاي", "هلو",
-            "اهلا", "مرحبا", "شكرا", "ميرسي", "تسلم", "سلام", "باي",
-        ],
-        "faq": [
-            "ازاي", "ايه", "مين", "هل", "عندك", "بتعمل", "فلوس",
-            "دفع", "امان", "سعر", "رسوم", "تكلفة", "مصاريف",
-        ],
-    }
-
-    # Search type detection
-    FULL_KEYWORDS = ["كامله", "كاملة", "full", "لوحدي", "لنفسي", "private apartment"]
-    SHARED_KEYWORDS = [
-        "مشترك", "shared", "roommate", "مع ناس", "مع حد", "سكن مشترك",
-        "شقه مشتركه", "شقة مشتركة", "shared apartment", "shared flat",
-    ]
-
-    AMENITY_KEYWORDS = {
-        "wifi": ["wifi", "wi-fi", "واي", "انترنت", "نت"],
-        "furnished": ["مفروش", "furnished"],
-        "air_conditioning": ["مكيف", "تكييف", "ac"],
-        "balcony": ["بلكونه", "balcony"],
-        "private_bathroom": ["حمام_خاص", "private_bathroom", "ensuite"],
-        "kitchen": ["مطبخ", "kitchen"],
-        "washer": ["غساله", "washer"],
-        "refrigerator": ["ثلاجه", "fridge"],
-    }
-
-    TENANT_KEYWORDS = {
-        "student": ["طلبه", "طلاب", "student", "students", "سكن_طلبه"],
-        "worker": ["موظف", "عامل", "worker", "موظفين", "employees"],
-    }
-
-    GENDER_KEYWORDS = {
-        "male": ["شباب", "ولاد", "boys", "male", "رجاله", "رجالة"],
-        "female": ["بنات", "girls", "female", "سيدات", "ladies"],
-    }
-
-    SORT_KEYWORDS = {
-        "price_low": ["ارخص", "رخيص", "cheap", "اقل", "lower", "سعر_منخفض"],
-        "price_high": ["اغلى", "غالي", "expensive", "اعلى", "higher", "سعر_مرتفع"],
-    }
-
     def __init__(self):
         self.location_service = LocationService()
         self.price_extractor = PriceExtractor()
         self.followup_extractor = FollowUpExtractor()
         self.llm_extractor = QueryExtractor()
+        self.validator = FilterValidator()
 
     def extract(self, message: str, history: str = "", last_search: SearchFilters = None, pending_slot: str = None) -> SearchFilters:
         debug_log("PIPELINE_START", message)
@@ -135,6 +80,8 @@ class NLPPipeline:
         if pending_slot:
             self._handle_slot_reply(parsed, pending_slot)
 
+        self._promote_entity_only_messages(parsed, last_search, pending_slot)
+
         parsed.calculate_overall_confidence()
         debug_log("CONFIDENCE", parsed.overall_confidence)
 
@@ -145,10 +92,10 @@ class NLPPipeline:
             parsed.llm_reason = "Rules sufficient — no LLM needed"
             debug_log("PIPELINE", "Rules sufficient — skipping LLM")
 
-        if last_search and (parsed.intent in ("follow_up", "clarification") or pending_slot):
+        if last_search and (parsed.intent in ("follow_up", "clarification", "remove_filter") or pending_slot):
             parsed = self._merge_with_last_search(parsed, last_search)
 
-        filters = parsed.to_search_filters()
+        filters = self.validator.validate(parsed.to_search_filters())
         debug_log("FINAL_FILTERS", filters.model_dump())
         return filters
 
@@ -173,22 +120,23 @@ class NLPPipeline:
 
     def _detect_intent(self, parsed: ParsedMessage):
         text = parsed.normalized_text
-        tokens = parsed.tokens
+        words = set(text.split())
+        tokens = set(parsed.tokens)
 
         intent_scores = {}
 
-        for intent, keywords in self.INTENT_KEYWORDS.items():
+        for intent, keywords in INTENT_KEYWORDS.items():
             score = 0
             for kw in keywords:
-                if kw in text:
+                normalized_kw = TextNormalizer.normalize(kw)
+                token_kw = normalized_kw.replace(" ", "_")
+
+                if " " in normalized_kw and normalized_kw in text:
                     score += 1.0
-                elif kw in tokens:
+                elif normalized_kw in words:
+                    score += 1.0
+                elif normalized_kw in tokens or token_kw in tokens:
                     score += 0.8
-            for token in tokens:
-                if len(token) >= 3:
-                    for kw in keywords:
-                        if len(kw) >= 3 and (token in kw or kw in token):
-                            score += 0.5
             if score > 0:
                 intent_scores[intent] = score
 
@@ -200,12 +148,14 @@ class NLPPipeline:
             parsed.intent = "invalid"
             parsed.intent_confidence = 0.0
 
-        if parsed.intent == "invalid" and parsed.location:
-            parsed.intent = "clarification"
-            parsed.intent_confidence = 0.8
-
     def _extract_location(self, parsed: ParsedMessage):
-        loc = self.location_service.detect_location(parsed.raw_text)
+        loc = None
+        if " بدل " in f" {parsed.normalized_text} ":
+            replacement_text = parsed.normalized_text.split(" بدل ", 1)[0]
+            loc = self.location_service.detect_location(replacement_text)
+
+        if not loc:
+            loc = self.location_service.detect_location(parsed.raw_text)
         if loc:
             parsed.location = LocationResult(
                 type=loc.get("type", ""),
@@ -231,35 +181,44 @@ class NLPPipeline:
 
     def _extract_amenities(self, parsed: ParsedMessage):
         text = parsed.normalized_text
+        text_parts = text.split()
         tokens = parsed.tokens
+        for amenity, keywords in AMENITY_KEYWORDS.items():
+            match_indexes = [
+                index
+                for index, token in enumerate(tokens)
+                if token in keywords
+            ]
 
-        for amenity, keywords in self.AMENITY_KEYWORDS.items():
-            for kw in keywords:
-                if kw in text or kw in tokens:
-                    negation_words = ["مش", "غير", "بدون", "without", "no", "not", "لأ"]
-                    text_parts = text.split()
-                    for i, part in enumerate(text_parts):
-                        if kw in part:
-                            start = max(0, i - 2)
-                            context = " ".join(text_parts[start:i])
-                            is_negated = any(n in context for n in negation_words)
-                            parsed.amenities[amenity] = not is_negated
-                            break
-                    else:
-                        parsed.amenities[amenity] = True
-                    break
+            if not match_indexes:
+                for index, part in enumerate(text_parts):
+                    if any(keyword in part for keyword in keywords):
+                        match_indexes.append(index)
+                        break
+
+            if not match_indexes:
+                continue
+
+            index = match_indexes[0]
+            scan_terms = tokens if index < len(tokens) else text_parts
+            start = max(0, index - 3)
+            context = scan_terms[start:index]
+            parsed.amenities[amenity] = not any(
+                term in NEGATION_WORDS
+                for term in context
+            )
 
     def _extract_tenant_and_gender(self, parsed: ParsedMessage):
         text = parsed.normalized_text
         tokens = parsed.tokens
 
-        for ttype, keywords in self.TENANT_KEYWORDS.items():
+        for ttype, keywords in TENANT_KEYWORDS.items():
             for kw in keywords:
                 if kw in text or kw in tokens:
                     parsed.tenant_type = ttype
                     break
 
-        for gender, keywords in self.GENDER_KEYWORDS.items():
+        for gender, keywords in GENDER_KEYWORDS.items():
             for kw in keywords:
                 if kw in text or kw in tokens:
                     parsed.gender = gender
@@ -267,34 +226,47 @@ class NLPPipeline:
 
         if "مشترك" in text or "shared" in text or "roommate" in text:
             parsed.shared_room = True
-        elif "سنجل" in text or "single" in text or "فردي" in text or "خاص" in text:
+        elif (
+            "سنجل" in text
+            or "single" in text
+            or "فردي" in text
+            or "اوضه خاصه" in text
+            or "اوضة خاصة" in text
+            or "غرفه خاصه" in text
+            or "غرفة خاصة" in text
+        ):
             parsed.shared_room = False
 
     def _extract_sort(self, parsed: ParsedMessage):
-        text = parsed.normalized_text
-        tokens = parsed.tokens
+        words = set(parsed.normalized_text.split())
+        tokens = set(parsed.tokens)
 
         followup = self.followup_extractor.extract(parsed.raw_text)
         if followup and followup.sort_by:
             parsed.sort_by = followup.sort_by
             return
 
-        for sort_type, keywords in self.SORT_KEYWORDS.items():
+        for sort_type, keywords in SORT_KEYWORDS.items():
             for kw in keywords:
-                if kw in text or kw in tokens:
+                if kw in words or kw in tokens:
                     parsed.sort_by = sort_type
                     return
 
     def _handle_slot_reply(self, parsed: ParsedMessage, pending_slot: str):
         text = parsed.normalized_text
         
-        yes_words = ["اه", "ايوه", "نعم", "ياريت", "اكيد", "ايوا"]
-        no_words = ["لا", "لأ", "مش", "بدون", "شكرا"]
-        any_words = ["اي", "اي حاجة", "مش فارقة", "اي حد", "كله شغال", "مش مهم"]
-        
-        is_yes = any(text == w for w in yes_words) or any(w in text.split() for w in yes_words)
-        is_no = any(text == w for w in no_words) or any(w in text.split() for w in no_words)
-        is_any = any(text == w for w in any_words) or any(w in text for w in any_words)
+        is_yes = any(text == word for word in SLOT_REPLY_YES_WORDS) or any(
+            word in text.split()
+            for word in SLOT_REPLY_YES_WORDS
+        )
+        is_no = any(text == word for word in SLOT_REPLY_NO_WORDS) or any(
+            word in text.split()
+            for word in SLOT_REPLY_NO_WORDS
+        )
+        is_any = any(text == word for word in SLOT_REPLY_ANY_WORDS) or any(
+            word in text
+            for word in SLOT_REPLY_ANY_WORDS
+        )
 
         # If it's a slot reply, confidence is high
         parsed.intent = "clarification"
@@ -310,8 +282,8 @@ class NLPPipeline:
 
         elif pending_slot == "tenant_type":
             if is_any:
-                parsed.tenant_type = "any"
-                parsed.gender = "any"
+                parsed.tenant_type = None
+                parsed.gender = None
 
         elif pending_slot == "price":
             if is_any or is_no:
@@ -321,44 +293,87 @@ class NLPPipeline:
         """بيحدد نوع البحث"""
         text = parsed.normalized_text
 
-        # Check for "full apartment" keywords FIRST
-        for kw in self.FULL_KEYWORDS:
-            if kw in text:
-                parsed.search_type = "full"
-                return
+        has_room_noun = any(
+            token in text or token in parsed.tokens
+            for token in ROOM_NOUNS
+        )
+        has_property_noun = any(
+            token in text or token in parsed.tokens
+            for token in PROPERTY_NOUNS
+        )
 
-        # Check for shared apartment keywords
-        for kw in self.SHARED_KEYWORDS:
-            if kw in text:
-                parsed.search_type = "shared"
-                return
-
-        if parsed.intent == "room_search":
+        if has_room_noun:
             parsed.search_type = "room"
-        elif parsed.intent == "property_search":
-            # "شقة" بس = كل الشقق (كاملة + مشتركة)
+            if parsed.intent not in SEARCH_TYPE_BLOCKED_INTENTS:
+                parsed.intent = "room_search"
+                parsed.intent_confidence = 1.0
+            return
+
+        if has_property_noun:
+            if any(keyword in text for keyword in FULL_KEYWORDS):
+                parsed.search_type = "full"
+            elif any(keyword in text for keyword in SHARED_KEYWORDS):
+                parsed.search_type = "shared"
+            else:
+                parsed.search_type = "property"
+            if parsed.intent not in SEARCH_TYPE_BLOCKED_INTENTS:
+                parsed.intent = "property_search"
+                parsed.intent_confidence = 1.0
+            return
+
+        if parsed.intent == "property_search":
             parsed.search_type = "property"
+
+    def _promote_entity_only_messages(
+        self,
+        parsed: ParsedMessage,
+        last_search: SearchFilters | None,
+        pending_slot: str | None,
+    ):
+        if pending_slot:
+            parsed.intent = "clarification"
+            parsed.intent_confidence = 1.0
+            return
+
+        if parsed.intent != "invalid":
+            return
+
+        if parsed.location:
+            parsed.intent = "follow_up" if " بدل " in f" {parsed.normalized_text} " else "clarification"
+            parsed.intent_confidence = 0.85
+            return
+
+        if last_search and (
+            parsed.price
+            or parsed.amenities
+            or parsed.tenant_type
+            or parsed.gender
+            or parsed.shared_room is not None
+            or parsed.sort_by
+        ):
+            parsed.intent = "follow_up"
+            parsed.intent_confidence = 0.85
 
     def _llm_fallback(self, parsed: ParsedMessage, message: str, history: str) -> ParsedMessage:
         llm_result = self.llm_extractor.extract(message, history)
 
         parsed.llm_reason = f"LLM called — confidence was {parsed.overall_confidence:.2f}"
 
-        if llm_result.intent and llm_result.intent != "invalid":
+        if parsed.intent == "invalid" and llm_result.intent and llm_result.intent != "invalid":
             parsed.intent = llm_result.intent
             parsed.intent_confidence = 0.85
 
-        if llm_result.search_type:
+        if not parsed.search_type and llm_result.search_type:
             parsed.search_type = llm_result.search_type
 
-        if llm_result.city:
+        if not parsed.location and llm_result.city:
             parsed.location = LocationResult(type="city", en=llm_result.city, confidence=0.85)
             parsed.location_confidence = 0.85
-        elif llm_result.governorate:
+        elif not parsed.location and llm_result.governorate:
             parsed.location = LocationResult(type="governorate", en=llm_result.governorate, confidence=0.85)
             parsed.location_confidence = 0.85
 
-        if llm_result.min_price or llm_result.max_price:
+        if not parsed.price and (llm_result.min_price or llm_result.max_price):
             parsed.price = PriceResult(
                 min_price=llm_result.min_price,
                 max_price=llm_result.max_price,
@@ -368,16 +383,16 @@ class NLPPipeline:
 
         for key in ["wifi", "furnished", "balcony", "air_conditioning", "private_bathroom"]:
             val = getattr(llm_result, key)
-            if val is not None:
+            if key not in parsed.amenities and val is not None:
                 parsed.amenities[key] = val
 
-        if llm_result.tenant_type:
+        if not parsed.tenant_type and llm_result.tenant_type:
             parsed.tenant_type = llm_result.tenant_type
-        if llm_result.gender:
+        if not parsed.gender and llm_result.gender:
             parsed.gender = llm_result.gender
-        if llm_result.shared_room is not None:
+        if parsed.shared_room is None and llm_result.shared_room is not None:
             parsed.shared_room = llm_result.shared_room
-        if llm_result.sort_by:
+        if not parsed.sort_by and llm_result.sort_by:
             parsed.sort_by = llm_result.sort_by
 
         parsed.calculate_overall_confidence()
@@ -394,6 +409,13 @@ class NLPPipeline:
                 parsed.location = LocationResult(type="city", en=last_search.city, confidence=0.8)
             else:
                 parsed.location = LocationResult(type="governorate", en=last_search.governorate, confidence=0.8)
+
+        if not parsed.price and (last_search.min_price is not None or last_search.max_price is not None):
+            parsed.price = PriceResult(
+                min_price=last_search.min_price,
+                max_price=last_search.max_price,
+                confidence=0.8,
+            )
 
         for key in ["wifi", "furnished", "balcony", "air_conditioning", "private_bathroom"]:
             old_val = getattr(last_search, key)

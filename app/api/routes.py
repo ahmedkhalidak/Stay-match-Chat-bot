@@ -9,8 +9,7 @@ search_service = SearchService()
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest):
-    reply = search_service.handle_message(
+    return search_service.handle_message(
         payload.session_id,
         payload.message,
     )
-    return ChatResponse(reply=reply)

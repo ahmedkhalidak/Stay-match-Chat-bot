@@ -18,11 +18,18 @@ class FilterValidator:
     VALID_SEARCH_TYPES = {
         "room",
         "property",
+        "full",
+        "shared",
     }
 
     VALID_TENANT_TYPES = {
         "student",
         "worker",
+    }
+
+    VALID_GENDERS = {
+        "male",
+        "female",
     }
 
     def __init__(self):
@@ -45,6 +52,10 @@ class FilterValidator:
         )
 
         self._validate_tenant_type(
+            filters
+        )
+
+        self._validate_gender(
             filters
         )
 
@@ -105,6 +116,18 @@ class FilterValidator:
         ):
 
             filters.tenant_type = None
+
+    def _validate_gender(
+        self,
+        filters: SearchFilters,
+    ):
+
+        if (
+            filters.gender
+            not in self.VALID_GENDERS
+        ):
+
+            filters.gender = None
 
     # ──────────────────────────────────────────
     # Prices
@@ -174,10 +197,8 @@ class FilterValidator:
 
             return
 
-        filters.city = detected[
-            "city"
-        ]
-
-        filters.governorate = detected[
-            "governorate"
-        ]
+        if detected.get("type") == "city":
+            filters.city = detected.get("en")
+        else:
+            filters.city = None
+            filters.governorate = detected.get("en")

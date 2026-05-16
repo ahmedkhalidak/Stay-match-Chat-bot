@@ -1,22 +1,23 @@
 from app.models.search_models import (
     SearchFilters,
 )
+from app.utils.text_normalizer import TextNormalizer
 
 
 class FollowUpExtractor:
 
     PRICE_LOW_KEYWORDS = [
         "ارخص",
+        "الارخص",
         "اقل",
-        "أقل",
         "رخيص",
     ]
 
     PRICE_HIGH_KEYWORDS = [
         "اغلي",
-        "أغلى",
         "اعلي",
-        "أعلى",
+        "الاغلي",
+        "الاعلي",
         "غالي",
     ]
 
@@ -25,12 +26,13 @@ class FollowUpExtractor:
         message: str,
     ) -> SearchFilters | None:
 
-        text = message.lower().strip()
+        text = TextNormalizer.normalize(message)
+        words = set(text.split())
 
         # ── Cheapest ────────────────────────────
         for keyword in self.PRICE_LOW_KEYWORDS:
 
-            if keyword in text:
+            if keyword in words:
 
                 return SearchFilters(
                     sort_by="price_low"
@@ -39,7 +41,7 @@ class FollowUpExtractor:
         # ── Highest ─────────────────────────────
         for keyword in self.PRICE_HIGH_KEYWORDS:
 
-            if keyword in text:
+            if keyword in words:
 
                 return SearchFilters(
                     sort_by="price_high"

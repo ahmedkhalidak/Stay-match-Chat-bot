@@ -1,200 +1,57 @@
 """
-ConversationFlow — State Machine for smart chatbot flow.
-Manages the logical sequence of questions to minimize LLM usage.
+ConversationFlow - deterministic state management for the chatbot.
+The flow keeps the first-search path short, then lets the user refine naturally.
 """
 
-import random
+from app.core.session_context import SessionContext
+from app.models.response_models import QuickReply
 from app.models.search_models import SearchFilters
-from app.core.session_context import SessionContext, UserPreferences
 from app.utils.logger import debug_log
+from app.utils.text_normalizer import TextNormalizer
 
 
 class ConversationFlow:
-    """
-    State machine for the bot conversation.
-    Flow: initial → search_type → location → price → amenities → results → follow_up
-    """
-
     ASK_SEARCH_TYPE = (
-        "أهلاً بيك في StayMatch! 😄\n"
-        "عايز تسكن إزاي؟\n\n"
-        "1️⃣ شقة كاملة (ليك لوحدك أو مع صحابك)\n"
-        "2️⃣ شقة مشتركة (مع roommates — كل واحد ليه أوضة)\n"
-        "3️⃣ أوضة في شقة مشتركة\n\n"
-        'قولي "شقة" أو "شقة مشتركة" أو "أوضة" وانا هساعدك 👇'
+        "أهلاً بيك في StayMatch.\n"
+        "بتدور على إيه؟"
     )
 
     ASK_LOCATION = (
-        "تمام، عايزها فين؟ 📍\n\n"
-        "ممكن تقولي اسم المدينة أو المنطقة، مثلاً:\n"
-        "• الإسماعيلية\n"
-        "• الإسكندرية\n"
-        "• طنطا\n"
-        "• أسوان\n\n"
-        "أو اكتب أي منطقة انت عايزها في أي محافظة 👇"
+        "تمام، تحب تدور فين؟\n"
+        "اكتب المدينة أو المنطقة، أو قول \"أي مكان\" لو عايز تشوف كل المتاح."
     )
 
     ASK_PRICE = (
-        "كويس! 💰\n"
-        "ميزانيتك قد إيه بالشهر؟\n\n"
-        'مثلاً: "تحت 5000" أو "من 3000 لـ 7000"\n'
-        "أو قولي \"أي سعر\" 👇"
+        "ميزانيتك الشهرية تقريباً كام؟\n"
+        "مثلاً: \"تحت 5000\" أو \"من 3000 لـ 7000\"، أو قول \"أي سعر\"."
     )
 
-    ASK_TENANT_TYPE = (
-        "عايزها لـ مين بالظبط؟ 👤\n\n"
-        "• طلاب\n"
-        "• موظفين\n"
-        "• شباب\n"
-        "• بنات\n\n"
-        "أو قولي \"أي حد\" 👇"
-    )
-
-    ASK_FURNISHED = (
-        "عايزها مفروشة ولا لأ؟ 🛋️\n\n"
-        '• "مفروشة"\n'
-        '• "غير مفروشة"\n'
-        '• "أي حاجة"'
-    )
-
-    def get_next_clarification(
-        self,
-        context: SessionContext,
-        filters: SearchFilters,
-    ) -> tuple[str | None, str | None]:
-        """
-        Returns (clarification_message, slot_name) or (None, None) if ready.
-        Uses user preferences from context to auto-fill when possible.
-        """
-        debug_log("FLOW_CHECK", f"turn={context.turn_count}, filters={filters.model_dump()}")
-
-        # 1. Search type
-        if not filters.search_type:
-            context.last_clarification = "search_type"
-            return self.ASK_SEARCH_TYPE, "search_type"
-
-        # 2. Location — always needed
-        if not filters.city and not filters.governorate:
-            # Try to fill from user preferences
-            if context.user_preferences.preferred_location:
-                # Check if it's a city or governorate
-                from app.utils.location_mapping import location_mapping
-                loc = location_mapping.get_governorate(context.user_preferences.preferred_location)
-                if loc:
-                    # It's a governorate name used as city
-                    if context.user_preferences.preferred_location.lower() == loc.lower():
-                        filters.governorate = loc
-                    else:
-                        filters.city = context.user_preferences.preferred_location
-                else:
-                    filters.city = context.user_preferences.preferred_location
-                debug_log("FLOW_AUTO", f"Filled location from prefs: {filters.city or filters.governorate}")
-            else:
-                context.last_clarification = "location"
-                return self.ASK_LOCATION, "location"
-
-        # 3. Price — smart: if no price given, ask (but not mandatory)
-        if filters.min_price is None and filters.max_price is None:
-            # Don't ask for price every time — only in early turns or if no preference stored
-            if context.turn_count <= 3 and context.no_results_count == 0:
-                context.last_clarification = "price"
-                return self.ASK_PRICE, "price"
-            # Try fill from preferences
-            if context.user_preferences.max_budget:
-                filters.max_price = context.user_preferences.max_budget
-                debug_log("FLOW_AUTO", f"Filled max_price from prefs: {filters.max_price}")
-            elif context.user_preferences.min_budget:
-                filters.min_price = context.user_preferences.min_budget
-                debug_log("FLOW_AUTO", f"Filled min_price from prefs: {filters.min_price}")
-
-        # 4. Tenant type & gender — ask once
-        if context.turn_count <= 5 and filters.search_type in ("room", "shared"):
-            if filters.tenant_type is None and filters.gender is None:
-                if context.user_preferences.tenant_type:
-                    filters.tenant_type = context.user_preferences.tenant_type
-                    debug_log("FLOW_AUTO", f"Filled tenant_type from prefs: {filters.tenant_type}")
-                elif context.user_preferences.gender:
-                    filters.gender = context.user_preferences.gender
-                    debug_log("FLOW_AUTO", f"Filled gender from prefs: {filters.gender}")
-                else:
-                    context.last_clarification = "tenant_type"
-                    return self.ASK_TENANT_TYPE, "tenant_type"
-
-        # 5. Furnished — ask once
-        if context.turn_count <= 4 and filters.furnished is None:
-            if context.user_preferences.furnished is not None:
-                filters.furnished = context.user_preferences.furnished
-                debug_log("FLOW_AUTO", f"Filled furnished from prefs: {filters.furnished}")
-            else:
-                context.last_clarification = "furnished"
-                return self.ASK_FURNISHED, "furnished"
-
-        # All required info collected
-        context.last_clarification = None
-        return None, None
-
-    def build_smart_followup(
-        self,
-        context: SessionContext,
-        filters: SearchFilters,
-        results_count: int,
-        has_more: bool,
-    ) -> str:
-        """
-        Build a context-aware smart follow-up message after search results.
-        No LLM needed — pure logic.
-        """
-        parts = []
-        p = context.user_preferences
-
-        # A. No results → suggest expanding
-        if results_count == 0:
-            if context.no_results_count >= 2:
-                parts.append(
-                    "مش لاقي حاجة مناسبة ليك في المناطق دي 😅\n"
-                    "ممكن تجرب منظقة تانية زي  !"
-                )
-            else:
-                parts.append(
-                    "مش لاقي نتائج بالمواصفات دي 🤔\n"
-                    "ممكن تجرب:\n"
-                    "• غيّر السعر (مثلاً "
-                    "• مدينة تانية\n"
-                )
-            return "\n\n".join(parts)
-
-        # B. Results found → smart suggestions based on context
-        suggestions = []
-
-        if has_more:
-            suggestions.append('"المزيد" عشان تشوف كمان')
-
-        # Suggest price filter if not set
-        if p.max_budget is None and p.min_budget is None:
-            suggestions.append('"أرخص" لو عايز نتائج أقل سعراً')
-
-        # Suggest amenities if not filtered yet
-        if p.furnished is None:
-            suggestions.append('"مفروشة"')
-        if p.wifi is None:
-            suggestions.append('"فيها واي فاي"')
-        if p.air_conditioning is None:
-            suggestions.append('"فيها تكييف"')
-
-        # Suggest location change
-        if context.total_searches >= 2:
-            suggestions.append('محافظة تانية  ""')
-
-        # Suggest tenant type
-        if filters.search_type in ("room", "shared") and p.tenant_type is None:
-            suggestions.append('"للطلاب" أو "للموظفين"')
-
-        if suggestions:
-            random.shuffle(suggestions)
-            picked = suggestions[:3]
-            parts.append(f"💬 ممكن تجرب: {', '.join(picked)}")
-
-        return "\n\n".join(parts) if parts else ""
+    ANY_LOCATION_PHRASES = {
+        "اي مكان",
+        "أي مكان",
+        "كل مصر",
+        "في اي مكان",
+        "في أي مكان",
+    }
+    ANY_PRICE_PHRASES = {
+        "اي سعر",
+        "أي سعر",
+        "مش مهم السعر",
+        "السعر مش فارق",
+        "بدون ميزانيه",
+    }
+    ANY_FURNISHED_PHRASES = {
+        "اي حاجه",
+        "أي حاجة",
+        "مش فارقه",
+        "مش مهم",
+    }
+    ANY_TENANT_PHRASES = {
+        "اي حد",
+        "أي حد",
+        "مش فارقه",
+        "مش مهم",
+    }
 
     def apply_preferences_to_filters(
         self,
@@ -202,37 +59,43 @@ class ConversationFlow:
         filters: SearchFilters,
     ) -> SearchFilters:
         """
-        Auto-fill missing filter fields from stored user preferences.
-        Called before every search.
+        Fill only truly missing values from stored preferences.
+        Explicitly skipped slots must stay open instead of being reintroduced.
         """
         p = context.user_preferences
         if not p:
             return filters
 
-        # Location
-        if not filters.city and not filters.governorate and p.preferred_location:
+        if (
+            "location" not in context.skipped_slots
+            and not filters.city
+            and not filters.governorate
+            and p.preferred_location
+        ):
             from app.utils.location_mapping import location_mapping
+
             gov = location_mapping.get_governorate(p.preferred_location)
             if gov and gov.lower() == p.preferred_location.lower():
                 filters.governorate = gov
             else:
                 filters.city = p.preferred_location
 
-        # Price
-        if filters.min_price is None and p.min_budget is not None:
-            filters.min_price = p.min_budget
-        if filters.max_price is None and p.max_budget is not None:
-            filters.max_price = p.max_budget
+        if "price" not in context.skipped_slots:
+            if filters.min_price is None and p.min_budget is not None:
+                filters.min_price = p.min_budget
+            if filters.max_price is None and p.max_budget is not None:
+                filters.max_price = p.max_budget
 
-        # Tenant
-        if filters.tenant_type is None and p.tenant_type:
-            filters.tenant_type = p.tenant_type
-        if filters.gender is None and p.gender:
-            filters.gender = p.gender
+        if "tenant_type" not in context.skipped_slots:
+            if filters.tenant_type is None and p.tenant_type:
+                filters.tenant_type = p.tenant_type
+            if filters.gender is None and p.gender:
+                filters.gender = p.gender
 
-        # Amenities
-        if filters.furnished is None and p.furnished is not None:
-            filters.furnished = p.furnished
+        if "furnished" not in context.skipped_slots and filters.furnished is None:
+            if p.furnished is not None:
+                filters.furnished = p.furnished
+
         if filters.wifi is None and p.wifi is not None:
             filters.wifi = p.wifi
         if filters.air_conditioning is None and p.air_conditioning is not None:
@@ -245,3 +108,160 @@ class ConversationFlow:
             filters.shared_room = p.shared_room
 
         return filters
+
+    def apply_user_overrides(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+        message: str,
+    ) -> SearchFilters:
+        """
+        Interpret "any" answers as explicit skips, not missing information.
+        """
+        text = TextNormalizer.normalize(message)
+
+        if self._matches_any(text, self.ANY_LOCATION_PHRASES):
+            filters.city = None
+            filters.governorate = None
+            context.skipped_slots.add("location")
+            context.user_preferences.preferred_location = None
+
+        if self._matches_any(text, self.ANY_PRICE_PHRASES):
+            filters.min_price = None
+            filters.max_price = None
+            context.skipped_slots.add("price")
+            context.user_preferences.min_budget = None
+            context.user_preferences.max_budget = None
+
+        if (
+            context.pending_slot == "furnished"
+            and self._matches_any(text, self.ANY_FURNISHED_PHRASES)
+        ):
+            filters.furnished = None
+            context.skipped_slots.add("furnished")
+            context.user_preferences.furnished = None
+
+        if (
+            context.pending_slot == "tenant_type"
+            and self._matches_any(text, self.ANY_TENANT_PHRASES)
+        ):
+            filters.tenant_type = None
+            filters.gender = None
+            context.skipped_slots.add("tenant_type")
+            context.user_preferences.tenant_type = None
+            context.user_preferences.gender = None
+
+        return filters
+
+    def sync_skipped_slots(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+    ):
+        """
+        A later explicit answer should reopen a previously skipped slot.
+        """
+        if filters.city or filters.governorate:
+            context.skipped_slots.discard("location")
+        if filters.min_price is not None or filters.max_price is not None:
+            context.skipped_slots.discard("price")
+        if filters.furnished is not None:
+            context.skipped_slots.discard("furnished")
+        if filters.tenant_type is not None or filters.gender is not None:
+            context.skipped_slots.discard("tenant_type")
+
+    def get_next_clarification(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+    ) -> tuple[str | None, str | None]:
+        """
+        Ask the next highest-value question.
+        The first search path intentionally stays short: type -> location -> budget.
+        """
+        debug_log("FLOW_CHECK", f"turn={context.turn_count}, filters={filters.model_dump()}")
+
+        if not filters.search_type:
+            context.last_clarification = "search_type"
+            return self.ASK_SEARCH_TYPE, "search_type"
+
+        if (
+            not filters.city
+            and not filters.governorate
+            and "location" not in context.skipped_slots
+        ):
+            context.last_clarification = "location"
+            return self.ASK_LOCATION, "location"
+
+        if (
+            filters.min_price is None
+            and filters.max_price is None
+            and "price" not in context.skipped_slots
+            and context.turn_count <= 3
+            and context.no_results_count == 0
+        ):
+            context.last_clarification = "price"
+            return self.ASK_PRICE, "price"
+
+        context.last_clarification = None
+        return None, None
+
+    def get_slot_suggestions(self, slot: str | None) -> list[QuickReply]:
+        suggestions = {
+            "search_type": [
+                QuickReply(label="أوضة", value="أوضة"),
+                QuickReply(label="شقة كاملة", value="شقة كاملة"),
+                QuickReply(label="شقة مشتركة", value="شقة مشتركة"),
+            ],
+            "location": [
+                QuickReply(label="المعادي", value="في المعادي"),
+                QuickReply(label="الإسكندرية", value="في الإسكندرية"),
+                QuickReply(label="أي مكان", value="أي مكان"),
+            ],
+            "price": [
+                QuickReply(label="تحت 5000", value="تحت 5000"),
+                QuickReply(label="3000 - 7000", value="من 3000 لـ 7000"),
+                QuickReply(label="أي سعر", value="أي سعر"),
+            ],
+        }
+        return suggestions.get(slot or "", [])
+
+    def build_result_suggestions(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+        has_more: bool,
+    ) -> list[QuickReply]:
+        suggestions: list[QuickReply] = []
+
+        if has_more:
+            suggestions.append(QuickReply(label="المزيد", value="المزيد"))
+        if filters.min_price is None and filters.max_price is None:
+            suggestions.append(QuickReply(label="الأرخص", value="أرخص"))
+        if filters.furnished is None:
+            suggestions.append(QuickReply(label="مفروشة", value="مفروشة"))
+        if filters.wifi is None:
+            suggestions.append(QuickReply(label="واي فاي", value="فيها واي فاي"))
+        if context.total_searches >= 1:
+            suggestions.append(QuickReply(label="مكان تاني", value="في الإسكندرية"))
+
+        return suggestions[:4]
+
+    def build_no_results_suggestions(
+        self,
+        filters: SearchFilters,
+    ) -> list[QuickReply]:
+        suggestions = [
+            QuickReply(label="أي مكان", value="أي مكان"),
+            QuickReply(label="تحت 10000", value="تحت 10000"),
+        ]
+        if filters.city or filters.governorate:
+            suggestions.append(QuickReply(label="الإسكندرية", value="في الإسكندرية"))
+        return suggestions
+
+    def _matches_any(self, text: str, phrases: set[str]) -> bool:
+        normalized_phrases = {
+            TextNormalizer.normalize(phrase)
+            for phrase in phrases
+        }
+        return text in normalized_phrases

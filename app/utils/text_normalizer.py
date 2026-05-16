@@ -20,8 +20,9 @@ class TextNormalizer:
         for old, new in replacements.items():
             text = text.replace(old, new)
 
-        # Remove repeated chars
-        text = re.sub(r"(.)\1+", r"\1", text)
+        # Collapse intentionally stretched letters while preserving legitimate doubles
+        # such as "تكييف".
+        text = re.sub(r"([^\d])\1{2,}", r"\1", text)
 
         # Remove extra spaces
         text = re.sub(r"\s+", " ", text).strip()

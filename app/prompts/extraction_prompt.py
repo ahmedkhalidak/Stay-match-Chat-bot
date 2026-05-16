@@ -63,7 +63,7 @@ LOCATION RULES (Egyptian cities)
 ══════════════════════════════
 FIELD GUIDE
 ══════════════════════════════
-search_type     : "room" | "property" | null
+search_type     : "room" | "property" | "full" | "shared" | null
 city            : English city name | null
 governorate     : English governorate | null
 min_price       : integer (EGP/month) | null

@@ -52,6 +52,7 @@ class SessionContext(BaseModel):
     last_clarification: Optional[str] = None   # "search_type", "location", "price", "amenities"
     no_results_count: int = 0
     total_searches: int = 0
+    skipped_slots: set[str] = Field(default_factory=set)
 
     def add_message(self, role: str, content: str):
         self.conversation_history.append(MessageTurn(role=role, content=content))
@@ -70,7 +71,7 @@ class SessionContext(BaseModel):
     def push_search(self, filters: SearchFilters, count: int):
         from datetime import datetime
         self.search_history.append(SearchResult(
-            filters=filters,
+            filters=filters.model_copy(deep=True),
             results_count=count,
             timestamp=datetime.now().isoformat()
         ))
@@ -86,7 +87,7 @@ class SessionContext(BaseModel):
     def go_back(self) -> SearchFilters | None:
         if self.history_index > 0:
             self.history_index -= 1
-            return self.search_history[self.history_index].filters
+            return self.search_history[self.history_index].filters.model_copy(deep=True)
         return None
 
     def reset_pagination(self):

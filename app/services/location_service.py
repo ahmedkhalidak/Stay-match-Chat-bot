@@ -73,68 +73,64 @@ class LocationService:
 
     def detect_location(self, text: str) -> dict | None:
         norm = TextNormalizer.normalize(text)
+        if not norm:
+            return None
+
         words = norm.split()
-
-        # ── 0. Phonetic match (أقوى طريقة للأخطاء الإملائية) ──
-        phonetic_text = self._phonetic_normalize(text)
-        phonetic_locations = {self._phonetic_normalize(loc): loc for loc in self.all_locations}
-
-        if phonetic_text in phonetic_locations:
-            original = phonetic_locations[phonetic_text]
-            debug_log("LOC_PHONETIC_EXACT", original)
-            return self.location_map[original]
-
-        # Check each word phonetically
-        for word in words:
-            if len(word) < 3:
-                continue
-            p_word = self._phonetic_normalize(word)
-            for p_loc, original in phonetic_locations.items():
-                if p_word == p_loc or p_word in p_loc or p_loc in p_word:
-                    debug_log("LOC_PHONETIC_PARTIAL", original)
-                    return self.location_map[original]
-
-        # ── 1. Exact substring match (longest first) ──
         sorted_locations = sorted(self.all_locations, key=len, reverse=True)
+
+        # 1. Exact named-location matches are the safest signal.
         for loc in sorted_locations:
             if loc in norm:
                 debug_log("LOC_EXACT", loc)
                 return self.location_map[loc]
 
-        # ── 2. Word boundary match ──
-        for word in words:
-            if len(word) < 3:
-                continue
-            for loc in sorted_locations:
-                if len(loc) >= 3 and (word in loc or loc in word):
-                    debug_log("LOC_PARTIAL", loc)
-                    return self.location_map[loc]
+        candidates = self._candidate_phrases(words)
 
-        # ── 3. Fuzzy match (cutoff أعلى) ──
-        for word in words:
-            if len(word) < 3:
-                continue
-            matches = difflib.get_close_matches(
-                word, self.all_locations, n=1, cutoff=0.75
-            )
-            if matches:
-                debug_log("LOC_FUZZY", matches[0])
-                return self.location_map[matches[0]]
+        # 2. Phonetic exact matches keep typo-tolerance without partial false positives
+        # like "اوضة" -> "الروضة" or "واي" -> "الوايلي".
+        phonetic_locations = {
+            self._phonetic_normalize(loc): loc
+            for loc in self.all_locations
+        }
+        for candidate in candidates:
+            phonetic_candidate = self._phonetic_normalize(candidate)
+            original = phonetic_locations.get(phonetic_candidate)
+            if original:
+                debug_log("LOC_PHONETIC_EXACT", original)
+                return self.location_map[original]
 
-        # ── 4. Multi-word fuzzy ──
-        for i in range(len(words)):
-            for j in range(i+1, min(i+3, len(words)+1)):
-                phrase = "".join(words[i:j])
-                if len(phrase) < 4:
-                    continue
+        # 3. Fuzzy matching remains available for misspellings, but with a stronger
+        # threshold so ordinary conversation words do not become cities.
+        for candidate in candidates:
+            if len(candidate.replace(" ", "")) < 4:
+                continue
+            candidate_variants = {
+                candidate,
+                re.sub(r"(.)\1+", r"\1", candidate),
+            }
+            for variant in candidate_variants:
                 matches = difflib.get_close_matches(
-                    phrase, self.all_locations, n=1, cutoff=0.75
+                    variant,
+                    self.all_locations,
+                    n=1,
+                    cutoff=0.82,
                 )
                 if matches:
-                    debug_log("LOC_PHRASE", matches[0])
+                    debug_log("LOC_FUZZY", matches[0])
                     return self.location_map[matches[0]]
 
         return None
 
     def find_in_text(self, text: str) -> dict | None:
         return self.detect_location(text)
+
+    def _candidate_phrases(self, words: list[str]) -> list[str]:
+        phrases: list[str] = []
+        max_size = min(3, len(words))
+        for size in range(max_size, 0, -1):
+            for start in range(0, len(words) - size + 1):
+                phrase = " ".join(words[start:start + size])
+                if phrase not in phrases:
+                    phrases.append(phrase)
+        return phrases

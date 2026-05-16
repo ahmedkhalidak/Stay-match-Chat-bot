@@ -91,13 +91,19 @@ class PropertyRepository:
         # ── Furnished ────────────────────────────
         if filters.furnished is True:
             conditions.append("p.Furnished = 1")
+        elif filters.furnished is False:
+            conditions.append("(p.Furnished = 0 OR p.Furnished IS NULL)")
 
         # ── Amenities ────────────────────────────
         if filters.wifi is True:
             conditions.append("pa.Wifi = 1")
+        elif filters.wifi is False:
+            conditions.append("(pa.Wifi = 0 OR pa.Wifi IS NULL)")
 
         if filters.air_conditioning is True:
             conditions.append("pa.AirConditioning = 1")
+        elif filters.air_conditioning is False:
+            conditions.append("(pa.AirConditioning = 0 OR pa.AirConditioning IS NULL)")
 
         # ── Tenant type & Gender ─────────────────
         if filters.tenant_type or filters.gender:
