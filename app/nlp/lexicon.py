@@ -62,6 +62,31 @@ SHARED_KEYWORDS = [
     "shared flat",
 ]
 
+HOUSING_TYPE_KEYWORDS = {
+    "apartment": [
+        "شقة", "شقه", "apartment", "flat", "كاملة", "كامله", "full",
+        "وحدة", "وحده", "عقار", "منزل", "house", "home", "villa",
+    ],
+    "room": [
+        "اوضة", "اوضه", "غرفة", "غرفه", "غرف", "room", "rooms", "bedroom", "studio",
+        "سنجل", "single", "خاص", "private", "فردي", "لوحدي",
+    ],
+    "shared": [
+        "مشترك", "shared", "roommate", "مع ناس", "مع حد", "سكن مشترك",
+        "شقه مشتركه", "شقة مشتركة", "shared apartment", "shared flat",
+        "روم ميت", "roommate", "شير", "مشاركة",
+    ],
+}
+
+ANY_HOUSING_TYPE_PHRASES = {
+    "اعرض الكل",
+    "عرض الكل",
+    "كلهم",
+    "الكل",
+    "اي نوع",
+    "أي نوع",
+}
+
 AMENITY_KEYWORDS = {
     "wifi": ["wifi", "wi-fi", "واي", "انترنت", "نت"],
     "furnished": ["مفروش", "furnished"],
@@ -90,10 +115,12 @@ SORT_KEYWORDS = {
 
 ROOM_NOUNS = {
     "غرفه",
+    "غرف",
     "اوضه",
     "اوضة",
     "غرفة",
     "room",
+    "rooms",
     "bedroom",
     "studio",
 }

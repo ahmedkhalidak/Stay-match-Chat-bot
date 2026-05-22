@@ -1,6 +1,7 @@
 from app.models.search_models import SearchFilters
 from app.services.location_service import LocationService
 from app.extractors.price_extractor import PriceExtractor
+from app.nlp.lexicon import HOUSING_TYPE_KEYWORDS
 
 
 location_service = LocationService()
@@ -23,6 +24,12 @@ class FilterExtractor:
             filters.search_type = "room"
         elif any(k in msg for k in ["شقة", "شقه", "apartment"]):
             filters.search_type = "property"
+
+        # ── Housing type (new intelligent filter) ──
+        for htype, keywords in HOUSING_TYPE_KEYWORDS.items():
+            if any(k in msg for k in keywords):
+                filters.housing_type = htype
+                break
 
         # ── Location ─────────────────────────────
         loc = location_service.detect_location(message)

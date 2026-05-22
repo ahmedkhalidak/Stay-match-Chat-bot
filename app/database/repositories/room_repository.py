@@ -3,6 +3,7 @@ from app.database.connection import engine
 from app.models.search_models import SearchFilters
 from app.utils.location_mapping import location_mapping
 from app.utils.logger import debug_log
+from app.utils.sql_builder import build_location_conditions
 
 
 class RoomRepository:
@@ -16,6 +17,12 @@ class RoomRepository:
         بنبحث بـ City = X  OR  Government = X  + كل مدن المحافظة.
         """
         return self._search_with_offset(filters, offset, limit)
+
+    def count(self, filters: SearchFilters) -> int:
+        """
+        يرجع العدد الكلي للنتائج بدون pagination
+        """
+        return self._count(filters)
 
     def search_with_cursor(
         self,
@@ -37,125 +44,10 @@ class RoomRepository:
         بنبحث بـ City = X  OR  Government = X  + كل مدن المحافظة.
         """
 
-        def _build_location_conditions(
-            name: str, params: dict, prefix: str
-        ) -> list[str]:
-            """
-            Enhanced location conditions with case-insensitive and partial matching.
-            Limit to first 20 cities to avoid FreeTDS parameter limit.
-            """
-            conds = [
-                f"LOWER(p.City) = LOWER(:{prefix}_name)",
-                f"LOWER(p.Government) = LOWER(:{prefix}_name)",
-                f"p.City LIKE :{prefix}_name_like",
-                f"p.Government LIKE :{prefix}_name_like",
-            ]
-            params[f"{prefix}_name"] = name
-            params[f"{prefix}_name_like"] = f"%{name}%"
-
-            # Limit to first 20 cities to avoid FreeTDS parameter limit
-            cities = location_mapping.get_cities(name)
-            if cities:
-                cities = cities[:20]
-                placeholders = []
-                for i, city in enumerate(cities):
-                    key = f"{prefix}_c{i}"
-                    params[key] = city
-                    placeholders.append(f":{key}")
-                conds.append(f"p.City IN ({', '.join(placeholders)})")
-
-            return conds
-
-        conditions = [
-            "p.IsApproved = 1",
-            "p.IsDeleted = 0",
-            "p.IsRejected = 0",
-            "p.IsDraft = 0",
-            "r.IsDeleted = 0",
-            "r.CapacityAvailable > 0",
-        ]
-
         params = {}
-        joins = [
-            "JOIN Properties p ON r.PropertyId = p.Id",
-            "LEFT JOIN PropertyAmenities pa ON pa.PropertyId = p.Id",
-        ]
+        conditions, joins = self._build_where_clause(filters, params)
 
-        # ── Location ─────────────────────────────────────────────────────────
-        if filters.city:
-            loc_conds = _build_location_conditions(filters.city, params, "city")
-            conditions.append(f"({' OR '.join(loc_conds)})")
-
-        if filters.governorate:
-            loc_conds = _build_location_conditions(
-                filters.governorate, params, "gov"
-            )
-            conditions.append(f"({' OR '.join(loc_conds)})")
-
-        # ── Price ─────────────────────────────────────────────────────────────
-        if filters.min_price is not None:
-            conditions.append("r.Month_rent >= :min_price")
-            params["min_price"] = filters.min_price
-
-        if filters.max_price is not None:
-            conditions.append("r.Month_rent <= :max_price")
-            params["max_price"] = filters.max_price
-
-        # ── Tenant type & Gender ──────────────────────────────────────────────
-        if filters.tenant_type or filters.gender:
-            joins.append("LEFT JOIN AllowedTenants at ON at.RoomId = r.Id")
-
-        if filters.tenant_type == "student":
-            conditions.append("at.AllowsStudents = 1")
-        elif filters.tenant_type == "worker":
-            conditions.append("at.AllowsWorkers = 1")
-
-        if filters.gender == "male":
-            conditions.append(
-                "(at.StudentGender = 0 OR at.WorkerGender = 0 "
-                "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
-            )
-        elif filters.gender == "female":
-            conditions.append(
-                "(at.StudentGender = 1 OR at.WorkerGender = 1 "
-                "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
-            )
-
-        # ── Shared / Private ──────────────────────────────────────────────────
-        if filters.shared_room is True:
-            conditions.append("r.Capacity > 1")
-        elif filters.shared_room is False:
-            conditions.append("r.Capacity = 1")
-
-        # ── Amenities ─────────────────────────────────────────────────────────
-        if filters.wifi is True:
-            conditions.append("pa.Wifi = 1")
-        elif filters.wifi is False:
-            conditions.append("(pa.Wifi = 0 OR pa.Wifi IS NULL)")
-
-        if filters.furnished is True:
-            conditions.append("r.Furnished = 1")
-        elif filters.furnished is False:
-            conditions.append("(r.Furnished = 0 OR r.Furnished IS NULL)")
-
-        if filters.balcony is True:
-            conditions.append("r.Balcony = 1")
-        elif filters.balcony is False:
-            conditions.append("(r.Balcony = 0 OR r.Balcony IS NULL)")
-
-        if filters.private_bathroom is True:
-            conditions.append("r.EnSuiteBathroom = 1")
-        elif filters.private_bathroom is False:
-            conditions.append("(r.EnSuiteBathroom = 0 OR r.EnSuiteBathroom IS NULL)")
-
-        if filters.air_conditioning is True:
-            conditions.append("pa.AirConditioning = 1")
-        elif filters.air_conditioning is False:
-            conditions.append(
-                "(pa.AirConditioning = 0 OR pa.AirConditioning IS NULL)"
-            )
-
-        # ── Sorting ───────────────────────────────────────────────────────────
+        # ── Sorting ──────────────────────────────────────────────────────────
         # Add Id as secondary sort for deterministic pagination (fixes duplicate results)
         order_clause = "r.CreatedAt DESC, r.Id DESC"
         if filters.sort_by == "price_low":
@@ -164,6 +56,10 @@ class RoomRepository:
             order_clause = "r.Month_rent DESC, r.Id DESC"
 
         join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
+
+        debug_log("DB_SEARCH_WHERE", where_clause)
+        debug_log("ROOM_SEARCH", f"Executing room search - city={filters.city}, governorate={filters.governorate}")
 
         query = f"""
         SELECT
@@ -197,7 +93,7 @@ class RoomRepository:
 
         FROM Rooms r
         {join_str}
-        WHERE {' AND '.join(conditions)}
+        WHERE {where_clause}
         ORDER BY {order_clause}
         OFFSET {offset} ROWS
         FETCH NEXT {limit} ROWS ONLY
@@ -205,50 +101,49 @@ class RoomRepository:
 
         debug_log("DB_QUERY", f"Room search - offset={offset}, limit={limit}")
         debug_log("DB_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}, min_price={filters.min_price}, max_price={filters.max_price}")
-        debug_log("DB_SQL", query[:200] + "..." if len(query) > 200 else query)
+        debug_log("ROOM_SQL", query[:500] + "..." if len(query) > 500 else query)
 
         with engine.connect() as conn:
             rows = conn.execute(text(query), params).mappings().all()
             debug_log("DB_RESULTS", f"Found {len(rows)} rooms")
+            debug_log("ROOM_RESULTS", f"Room search returned {len(rows)} results")
 
         return rows
 
-    def _search_with_cursor(
-        self,
-        filters: SearchFilters,
-        cursor: dict = None,
-        limit: int = 5
-    ):
+    def _count(self, filters: SearchFilters) -> int:
         """
-        البحث باستخدام cursor-based pagination
-        cursor: {'created_at': '2024-01-01T00:00:00', 'id': 123}
+        يرجع العدد الكلي للنتائج بدون pagination
+        """
+        params = {}
+        conditions, joins = self._build_where_clause(filters, params)
+
+        join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+        SELECT COUNT(DISTINCT r.Id) as total
+        FROM Rooms r
+        {join_str}
+        WHERE {where_clause}
         """
 
-        def _build_location_conditions(
-            name: str, params: dict, prefix: str
-        ) -> list[str]:
-            conds = [
-                f"LOWER(p.City) = LOWER(:{prefix}_name)",
-                f"LOWER(p.Government) = LOWER(:{prefix}_name)",
-                f"p.City LIKE :{prefix}_name_like",
-                f"p.Government LIKE :{prefix}_name_like",
-            ]
-            params[f"{prefix}_name"] = name
-            params[f"{prefix}_name_like"] = f"%{name}%"
+        debug_log("DB_COUNT_WHERE", where_clause)
+        debug_log("DB_COUNT_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}")
+        debug_log("ROOM_SEARCH", f"Counting rooms - city={filters.city}, governorate={filters.governorate}")
 
-            # Limit to first 20 cities to avoid FreeTDS parameter limit
-            cities = location_mapping.get_cities(name)
-            if cities:
-                cities = cities[:20]
-                placeholders = []
-                for i, city in enumerate(cities):
-                    key = f"{prefix}_c{i}"
-                    params[key] = city
-                    placeholders.append(f":{key}")
-                conds.append(f"p.City IN ({', '.join(placeholders)})")
+        with engine.connect() as conn:
+            result = conn.execute(text(query), params).mappings().first()
+            count = result["total"] if result else 0
+            debug_log("DB_COUNT_RESULT", f"Total rooms: {count}")
+            debug_log("ROOM_RESULTS", f"Room count: {count}")
 
-            return conds
+        return count
 
+    def _build_where_clause(self, filters: SearchFilters, params: dict) -> tuple[list[str], list[str]]:
+        """
+        Builds WHERE conditions and JOINs for room search.
+        Returns: (conditions, joins)
+        """
         conditions = [
             "p.IsApproved = 1",
             "p.IsDeleted = 0",
@@ -258,33 +153,23 @@ class RoomRepository:
             "r.CapacityAvailable > 0",
         ]
 
-        params = {}
         joins = [
             "JOIN Properties p ON r.PropertyId = p.Id",
             "LEFT JOIN PropertyAmenities pa ON pa.PropertyId = p.Id",
         ]
 
-        # Cursor condition
-        if cursor:
-            conditions.append(
-                "(r.CreatedAt < :last_created_at OR "
-                "(r.CreatedAt = :last_created_at AND r.Id < :last_id))"
-            )
-            params['last_created_at'] = cursor['created_at']
-            params['last_id'] = cursor['id']
-
-        # Location
+        # ── Location ─────────────────────────────────────────────────────────
         if filters.city:
-            loc_conds = _build_location_conditions(filters.city, params, "city")
+            loc_conds = build_location_conditions(filters.city, params, "city", "p")
             conditions.append(f"({' OR '.join(loc_conds)})")
 
         if filters.governorate:
-            loc_conds = _build_location_conditions(
-                filters.governorate, params, "gov"
+            loc_conds = build_location_conditions(
+                filters.governorate, params, "gov", "p"
             )
             conditions.append(f"({' OR '.join(loc_conds)})")
 
-        # Price
+        # ── Price ─────────────────────────────────────────────────────────────
         if filters.min_price is not None:
             conditions.append("r.Month_rent >= :min_price")
             params["min_price"] = filters.min_price
@@ -293,7 +178,7 @@ class RoomRepository:
             conditions.append("r.Month_rent <= :max_price")
             params["max_price"] = filters.max_price
 
-        # Tenant type & Gender
+        # ── Tenant type & Gender ──────────────────────────────────────────────
         if filters.tenant_type or filters.gender:
             joins.append("LEFT JOIN AllowedTenants at ON at.RoomId = r.Id")
 
@@ -313,27 +198,32 @@ class RoomRepository:
                 "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
             )
 
-        # Shared / Private
-        if filters.shared_room is True:
-            conditions.append("r.Capacity > 1")
-        elif filters.shared_room is False:
-            conditions.append("r.Capacity = 1")
+        # ── Furnished ────────────────────────────────────────────────────────
+        if filters.furnished is not None:
+            if filters.furnished:
+                conditions.append("r.Furnished = 1")
+            else:
+                conditions.append("r.Furnished = 0")
 
-        # Amenities
-        if filters.wifi is True:
-            conditions.append("pa.Wifi = 1")
-        elif filters.wifi is False:
-            conditions.append("(pa.Wifi = 0 OR pa.Wifi IS NULL)")
+        # ── Shared / Private ───────────────────────────────────────────────────
+        if filters.shared_room is not None:
+            if filters.shared_room:
+                conditions.append("r.Capacity > 1")
+            else:
+                conditions.append("r.Capacity = 1")
 
-        if filters.furnished is True:
-            conditions.append("r.Furnished = 1")
-        elif filters.furnished is False:
-            conditions.append("(r.Furnished = 0 OR r.Furnished IS NULL)")
+        # ── Amenities ────────────────────────────────────────────────────────
+        if filters.wifi is not None:
+            if filters.wifi:
+                conditions.append("pa.Wifi = 1")
+            else:
+                conditions.append("(pa.Wifi = 0 OR pa.Wifi IS NULL)")
 
-        if filters.balcony is True:
-            conditions.append("r.Balcony = 1")
-        elif filters.balcony is False:
-            conditions.append("(r.Balcony = 0 OR r.Balcony IS NULL)")
+        if filters.balcony is not None:
+            if filters.balcony:
+                conditions.append("r.Balcony = 1")
+            else:
+                conditions.append("(r.Balcony = 0 OR r.Balcony IS NULL)")
 
         if filters.private_bathroom is True:
             conditions.append("r.EnSuiteBathroom = 1")
@@ -347,6 +237,31 @@ class RoomRepository:
                 "(pa.AirConditioning = 0 OR pa.AirConditioning IS NULL)"
             )
 
+        return conditions, joins
+
+    def _search_with_cursor(
+        self,
+        filters: SearchFilters,
+        cursor: dict = None,
+        limit: int = 5
+    ):
+        """
+        البحث باستخدام cursor-based pagination
+        cursor: {'created_at': '2024-01-01T00:00:00', 'id': 123}
+        """
+
+        params = {}
+        conditions, joins = self._build_where_clause(filters, params)
+
+        # Cursor condition
+        if cursor:
+            conditions.append(
+                "(r.CreatedAt < :last_created_at OR "
+                "(r.CreatedAt = :last_created_at AND r.Id < :last_id))"
+            )
+            params['last_created_at'] = cursor['created_at']
+            params['last_id'] = cursor['id']
+
         # Sorting
         # Add Id as secondary sort for deterministic pagination (fixes duplicate results)
         order_clause = "r.CreatedAt DESC, r.Id DESC"
@@ -356,6 +271,7 @@ class RoomRepository:
             order_clause = "r.Month_rent DESC, r.Id DESC"
 
         join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
 
         query = f"""
         SELECT
@@ -390,18 +306,20 @@ class RoomRepository:
 
         FROM Rooms r
         {join_str}
-        WHERE {' AND '.join(conditions)}
+        WHERE {where_clause}
         ORDER BY {order_clause}
         FETCH NEXT {limit + 1} ROWS ONLY
         """
 
         debug_log("DB_QUERY", f"Room search with cursor - limit={limit}")
         debug_log("DB_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}, cursor={cursor}")
-        debug_log("DB_SQL", query[:200] + "..." if len(query) > 200 else query)
+        debug_log("ROOM_SEARCH", f"Room search with cursor - city={filters.city}, governorate={filters.governorate}")
+        debug_log("ROOM_SQL", query[:500] + "..." if len(query) > 500 else query)
 
         with engine.connect() as conn:
             rows = conn.execute(text(query), params).mappings().all()
             debug_log("DB_RESULTS", f"Found {len(rows)} rooms")
+            debug_log("ROOM_RESULTS", f"Room search with cursor returned {len(rows)} results")
 
         # Determine if there are more results
         has_more = len(rows) > limit

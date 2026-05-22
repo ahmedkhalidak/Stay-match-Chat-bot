@@ -27,6 +27,7 @@ class UserPreferences(BaseModel):
     balcony: Optional[bool] = None
     private_bathroom: Optional[bool] = None
     shared_room: Optional[bool] = None
+    housing_type: Optional[str] = None  # "apartment" | "room" | "shared" | "any"
 
 
 class SessionContext(BaseModel):
@@ -144,6 +145,8 @@ class SessionContext(BaseModel):
             p.private_bathroom = filters.private_bathroom
         if filters.shared_room is not None:
             p.shared_room = filters.shared_room
+        if filters.housing_type:
+            p.housing_type = filters.housing_type
 
     def get_missing_aspects(self, filters: SearchFilters) -> list[str]:
         """Return what the user hasn't specified yet — for smart questions"""

@@ -8,6 +8,7 @@ from app.models.response_models import QuickReply
 from app.models.search_models import SearchFilters
 from app.utils.logger import debug_log
 from app.utils.text_normalizer import TextNormalizer
+from app.nlp.lexicon import ANY_HOUSING_TYPE_PHRASES
 
 
 class ConversationFlow:
@@ -53,6 +54,9 @@ class ConversationFlow:
         "مش مهم",
     }
 
+    # Housing type clarification threshold
+    HOUSING_TYPE_RESULT_THRESHOLD = 5  # Ask for clarification if > 5 results
+
     def apply_preferences_to_filters(
         self,
         context: SessionContext,
@@ -81,10 +85,27 @@ class ConversationFlow:
                 filters.city = p.preferred_location
 
         if "price" not in context.skipped_slots:
-            if filters.min_price is None and p.min_budget is not None:
-                filters.min_price = p.min_budget
-            if filters.max_price is None and p.max_budget is not None:
-                filters.max_price = p.max_budget
+            from app.utils.logger import debug_log
+            debug_log("PRICE_PARSED", f"min_price={filters.min_price}, max_price={filters.max_price}")
+            debug_log("PREVIOUS_PRICE_FILTERS", f"min_budget={p.min_budget}, max_budget={p.max_budget}")
+            
+            # FIX: When user explicitly sets a new price constraint, clear conflicting previous price filters
+            # Example: User says "ازيد من 5000" (min_price=5000, max_price=None)
+            # Should NOT inherit previous max_price=5000 from "اقل من 5000"
+            if filters.min_price is not None or filters.max_price is not None:
+                # User explicitly set a price constraint - don't inherit from preferences
+                # This prevents conflicting filters like min_price=5000 AND max_price=5000
+                debug_log("PRICE_OVERRIDE_DETECTED", "User explicitly set price constraint - not inheriting from preferences")
+                pass
+            else:
+                # No explicit price constraint - inherit from preferences
+                if p.min_budget is not None:
+                    filters.min_price = p.min_budget
+                if p.max_budget is not None:
+                    filters.max_price = p.max_budget
+                debug_log("PRICE_FILTERS_AFTER_MERGE", f"Inherited from preferences: min_price={filters.min_price}, max_price={filters.max_price}")
+            
+            debug_log("FINAL_PRICE_FILTERS", f"min_price={filters.min_price}, max_price={filters.max_price}")
 
         if "tenant_type" not in context.skipped_slots:
             if filters.tenant_type is None and p.tenant_type:
@@ -107,6 +128,12 @@ class ConversationFlow:
         if filters.shared_room is None and p.shared_room is not None:
             filters.shared_room = p.shared_room
 
+        if filters.housing_type is None and p.housing_type:
+            filters.housing_type = p.housing_type
+
+        from app.utils.logger import debug_log
+        debug_log("PREFERENCES_AFTER_MERGE", filters.model_dump())
+        
         return filters
 
     def apply_user_overrides(
@@ -151,6 +178,14 @@ class ConversationFlow:
             context.user_preferences.tenant_type = None
             context.user_preferences.gender = None
 
+        if (
+            context.pending_slot == "housing_type"
+            and self._matches_any(text, ANY_HOUSING_TYPE_PHRASES)
+        ):
+            filters.housing_type = "any"
+            context.skipped_slots.add("housing_type")
+            context.user_preferences.housing_type = "any"
+
         return filters
 
     def sync_skipped_slots(
@@ -169,6 +204,53 @@ class ConversationFlow:
             context.skipped_slots.discard("furnished")
         if filters.tenant_type is not None or filters.gender is not None:
             context.skipped_slots.discard("tenant_type")
+        if filters.housing_type is not None:
+            context.skipped_slots.discard("housing_type")
+
+    def should_ask_housing_type_clarification(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+        result_count: int,
+    ) -> bool:
+        """
+        Determine if we should ask for housing_type clarification.
+        Only ask when:
+        - housing_type is unknown
+        - AND search result count is large (>= threshold)
+        - AND housing_type hasn't been explicitly skipped
+        """
+        if filters.housing_type:
+            return False  # Already specified
+
+        if "housing_type" in context.skipped_slots:
+            return False  # User explicitly skipped
+
+        if result_count < self.HOUSING_TYPE_RESULT_THRESHOLD:
+            return False  # Results are manageable, no need to ask
+
+        return True
+
+    def get_housing_type_clarification(
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+        result_count: int,
+        location_name: str = "",
+    ) -> tuple[str, str]:
+        """
+        Generate housing type clarification message when result count is large.
+        """
+        location_text = location_name or filters.city or filters.governorate or "المناطق المتاحة"
+        clarification = (
+            f"لقيت {result_count} نتيجة في {location_text}.\n\n"
+            "تفضل:\n"
+            "🏠 شقة كاملة\n"
+            "🚪 غرفة\n"
+            "👥 سكن مشترك\n\n"
+            "أو اكتب اعرض الكل"
+        )
+        return clarification, "housing_type"
 
     def get_next_clarification(
         self,
@@ -222,6 +304,12 @@ class ConversationFlow:
                 QuickReply(label="تحت 5000", value="تحت 5000"),
                 QuickReply(label="3000 - 7000", value="من 3000 لـ 7000"),
                 QuickReply(label="أي سعر", value="أي سعر"),
+            ],
+            "housing_type": [
+                QuickReply(label="🏠 شقة كاملة", value="شقة كاملة"),
+                QuickReply(label="🚪 غرفة", value="غرفة"),
+                QuickReply(label="👥 سكن مشترك", value="سكن مشترك"),
+                QuickReply(label="اعرض الكل", value="اعرض الكل"),
             ],
         }
         return suggestions.get(slot or "", [])

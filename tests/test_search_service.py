@@ -167,6 +167,65 @@ class SearchServiceTests(unittest.TestCase):
         self.assertEqual(invalid.response_type, "fallback")
         self.assertTrue(invalid.suggestions)
 
+    def test_room_search_by_governorate(self):
+        """Test room search with governorate filter"""
+        response = self.service.handle_message("room-gov", "غرف في القاهرة")
+        self.assertEqual(response.response_type, "results")
+        self.assertEqual(response.filters.search_type, "room")
+        self.assertEqual(response.filters.housing_type, "room")
+        self.assertEqual(response.filters.governorate, "Cairo")
+
+    def test_room_search_by_city(self):
+        """Test room search with city filter"""
+        response = self.service.handle_message("room-city", "غرف في المعادي")
+        self.assertEqual(response.response_type, "results")
+        self.assertEqual(response.filters.search_type, "room")
+        self.assertEqual(response.filters.housing_type, "room")
+        self.assertEqual(response.filters.city, "Maadi")
+
+    def test_housing_type_switch_resets_pagination(self):
+        """Test that switching housing type resets pagination state"""
+        # First search: apartment
+        first = self.service.handle_message("switch-1", "شقق في القاهرة مفروشة")
+        self.assertEqual(first.response_type, "results")
+        self.assertEqual(first.filters.housing_type, "apartment")
+        self.assertTrue(first.filters.furnished)
+
+        # Switch to room: should reset pagination and clear optional filters
+        second = self.service.handle_message("switch-1", "غرف")
+        self.assertEqual(second.response_type, "results")
+        self.assertEqual(second.filters.housing_type, "room")
+        self.assertIsNone(second.filters.furnished, "Optional filters should be cleared")
+        self.assertEqual(second.filters.governorate, "Cairo", "Location should be preserved")
+
+    def test_housing_type_switch_preserves_budget(self):
+        """Test that switching housing type preserves budget"""
+        # First search: apartment with price
+        first = self.service.handle_message("budget-1", "شقق تحت 10000")
+        self.assertEqual(first.response_type, "results")
+        self.assertEqual(first.filters.housing_type, "apartment")
+        self.assertEqual(first.filters.max_price, 10000)
+
+        # Switch to room: should preserve budget
+        second = self.service.handle_message("budget-1", "غرف")
+        self.assertEqual(second.response_type, "results")
+        self.assertEqual(second.filters.housing_type, "room")
+        self.assertEqual(second.filters.max_price, 10000, "Budget should be preserved")
+
+    def test_housing_type_switch_clears_amenities(self):
+        """Test that switching housing type clears amenity filters"""
+        # First search: shared with wifi
+        first = self.service.handle_message("amenities-1", "شقق مشتركة فيها واي فاي")
+        self.assertEqual(first.response_type, "results")
+        self.assertEqual(first.filters.housing_type, "shared")
+        self.assertTrue(first.filters.wifi)
+
+        # Switch to room: should clear wifi
+        second = self.service.handle_message("amenities-1", "غرف")
+        self.assertEqual(second.response_type, "results")
+        self.assertEqual(second.filters.housing_type, "room")
+        self.assertIsNone(second.filters.wifi, "Amenity filters should be cleared")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -119,7 +119,16 @@ class SearchExecutor:
                 ),
             )
 
-        context.last_results_count = len(page_results)
+        # Get total count for housing_type clarification check
+        if offset == 0 and not cursor:
+            if filters.search_type == "room":
+                total_count = self.room_repo.count(filters)
+            else:
+                total_count = self.property_repo.count(filters)
+            context.last_results_count = total_count
+            debug_log("SEARCH_EXECUTOR_COUNT", f"Total results: {total_count}")
+        else:
+            context.last_results_count = len(page_results)
         
         # Mark seen IDs on every page to prevent duplicates (not just first page)
         ids = [row.get("Id") for row in page_results if row.get("Id")]

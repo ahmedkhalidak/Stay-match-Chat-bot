@@ -3,6 +3,7 @@ from app.database.connection import engine
 from app.models.search_models import SearchFilters
 from app.utils.location_mapping import location_mapping
 from app.utils.logger import debug_log
+from app.utils.sql_builder import build_location_conditions
 
 
 class PropertyRepository:
@@ -18,6 +19,12 @@ class PropertyRepository:
         - shared:   شقة مشتركة بس (MonthlyRent IS NULL + فيها أوض)
         """
         return self._search_with_offset(filters, offset, limit)
+
+    def count(self, filters: SearchFilters) -> int:
+        """
+        يرجع العدد الكلي للنتائج بدون pagination
+        """
+        return self._count(filters)
 
     def search_with_cursor(
         self, 
@@ -54,41 +61,84 @@ class PropertyRepository:
             الحل: "property" = بحث عام يشمل الاتنين بدون تقييد.
         """
 
-        def _build_location_conditions(
-            name: str, params: dict, prefix: str
-        ) -> list[str]:
-            """
-            يبني conditions شاملة للـ location:
-            - City = name (case-insensitive)
-            - Government = name (case-insensitive)
-            - City LIKE name (partial match)
-            - Government LIKE name (partial match)
-            - لو name دي محافظة معروفة → City IN (أول 20 مدينة فقط لتجنب حد المعاملات)
-            """
-            conds = [
-                f"LOWER(p.City) = LOWER(:{prefix}_name)",
-                f"LOWER(p.Government) = LOWER(:{prefix}_name)",
-                f"p.City LIKE :{prefix}_name_like",
-                f"p.Government LIKE :{prefix}_name_like",
-            ]
-            params[f"{prefix}_name"] = name
-            params[f"{prefix}_name_like"] = f"%{name}%"
+        params = {}
+        conditions, joins = self._build_where_clause(filters, params)
 
-            # لو الاسم ده محافظة فعلاً → ضيف أول 20 مدينة فقط
-            # FreeTDS لديه حد أقصى لعدد المعاملات
-            cities = location_mapping.get_cities(name)
-            if cities:
-                # Limit to first 20 cities to avoid parameter limit
-                cities = cities[:20]
-                placeholders = []
-                for i, city in enumerate(cities):
-                    key = f"{prefix}_c{i}"
-                    params[key] = city
-                    placeholders.append(f":{key}")
-                conds.append(f"p.City IN ({', '.join(placeholders)})")
+        # ── Sorting ──────────────────────────────────────────────────────────
+        # Add Id as secondary sort for deterministic pagination (fixes duplicate results)
+        order_clause = "p.CreatedAt DESC, p.Id DESC"
+        if filters.sort_by == "price_low":
+            if filters.search_type == "shared":
+                order_clause = "MIN(r.Month_rent) ASC, p.Id DESC"
+            else:
+                order_clause = "COALESCE(p.MonthlyRent, MIN(r.Month_rent)) ASC, p.Id DESC"
+        elif filters.sort_by == "price_high":
+            if filters.search_type == "shared":
+                order_clause = "MAX(r.Month_rent) DESC, p.Id DESC"
+            else:
+                order_clause = "COALESCE(p.MonthlyRent, MAX(r.Month_rent)) DESC, p.Id DESC"
 
-            return conds
+        join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
 
+        debug_log("DB_SEARCH_WHERE", where_clause)
+        debug_log("FINAL_SQL_WHERE", where_clause)
+
+        query = f"""
+        SELECT
+            p.Id,
+            p.Name,
+            p.MonthlyRent,
+            p.Deposite,
+            p.City,
+            p.Government,
+            p.Description,
+            p.NumberOfBedrooms,
+            p.NumberOfLivingRooms,
+            p.TotalRooms,
+            p.AvailableRooms,
+            p.Furnished,
+            p.Size,
+            p.MinimumStay,
+            COUNT(r.Id)          AS TotalRoomsCount,
+            MIN(r.Month_rent)    AS RoomMinPrice,
+            MAX(r.Month_rent)    AS RoomMaxPrice,
+            AVG(r.Month_rent)    AS RoomAvgPrice,
+            pa.Wifi,
+            pa.AirConditioning,
+            pa.Tv,
+            pa.Washer,
+            pa.Refrigerator,
+            pa.FreeParking
+        FROM Properties p
+        {join_str}
+        WHERE {where_clause}
+        GROUP BY
+            p.Id, p.Name, p.MonthlyRent, p.Deposite, p.City, p.Government,
+            p.Description, p.NumberOfBedrooms, p.NumberOfLivingRooms,
+            p.TotalRooms, p.AvailableRooms, p.Furnished, p.Size, p.MinimumStay,
+            pa.Wifi, pa.AirConditioning, pa.Tv, pa.Washer,
+            pa.Refrigerator, pa.FreeParking, p.CreatedAt
+        ORDER BY {order_clause}
+        OFFSET {offset} ROWS
+        FETCH NEXT {limit} ROWS ONLY
+        """
+
+        debug_log("DB_QUERY", f"Property search - offset={offset}, limit={limit}")
+        debug_log("DB_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}, min_price={filters.min_price}, max_price={filters.max_price}")
+        debug_log("DB_SQL", query)
+
+        with engine.connect() as conn:
+            rows = conn.execute(text(query), params).mappings().all()
+            debug_log("DB_RESULTS", f"Found {len(rows)} properties")
+
+        return rows
+
+    def _build_where_clause(self, filters: SearchFilters, params: dict) -> tuple[list[str], list[str]]:
+        """
+        Builds WHERE conditions and JOINs for property search.
+        Returns: (conditions, joins)
+        """
         conditions = [
             "p.IsApproved = 1",
             "p.IsDeleted = 0",
@@ -96,41 +146,39 @@ class PropertyRepository:
             "p.IsDraft = 0",
         ]
 
-        params = {}
         joins = [
             "LEFT JOIN PropertyAmenities pa ON pa.PropertyId = p.Id",
             "LEFT JOIN Rooms r ON r.PropertyId = p.Id AND r.IsDeleted = 0",
         ]
 
         # ── Search Type Filter ──────────────────────────────────────────────
+        # FIXED: PropertyType mapping corrected to match database structure
+        # PropertyType = 0 → Full Apartment
+        # PropertyType = 1 → Shared Housing
         if filters.search_type == "full":
-            # شقة كاملة: PropertyType = 1 + MonthlyRent IS NOT NULL
-            conditions.append("p.PropertyType = 1")
-            conditions.append("p.MonthlyRent IS NOT NULL")
-
-        elif filters.search_type == "shared":
-            # شقة مشتركة/غرف: PropertyType = 0 + MonthlyRent IS NULL
             conditions.append("p.PropertyType = 0")
+            conditions.append("p.MonthlyRent IS NOT NULL")
+            debug_log("HOUSING_TYPE_SQL_RULE", "Apartment: PropertyType=0 AND MonthlyRent IS NOT NULL")
+        elif filters.search_type == "shared":
+            conditions.append("p.PropertyType = 1")
             conditions.append("p.MonthlyRent IS NULL")
             conditions.append(
                 "EXISTS (SELECT 1 FROM Rooms r2 "
                 "WHERE r2.PropertyId = p.Id AND r2.IsDeleted = 0)"
             )
-
+            debug_log("HOUSING_TYPE_SQL_RULE", "Shared: PropertyType=1 AND MonthlyRent IS NULL AND EXISTS active rooms")
         elif filters.search_type == "property":
-            # شقق عامة: PropertyType IN (0, 1)
             conditions.append("p.PropertyType IN (0, 1)")
+            debug_log("HOUSING_TYPE_SQL_RULE", "Any: PropertyType IN (0, 1)")
 
         # ── Location ────────────────────────────────────────────────────────
-        # FIX: بنستخدم _build_location_conditions اللي بتشمل City + Government
-        #      + كل مدن المحافظة في نفس الوقت.
         if filters.city:
-            loc_conds = _build_location_conditions(filters.city, params, "city")
+            loc_conds = build_location_conditions(filters.city, params, "city", "p")
             conditions.append(f"({' OR '.join(loc_conds)})")
 
         if filters.governorate:
-            loc_conds = _build_location_conditions(
-                filters.governorate, params, "gov"
+            loc_conds = build_location_conditions(
+                filters.governorate, params, "gov", "p"
             )
             conditions.append(f"({' OR '.join(loc_conds)})")
 
@@ -170,6 +218,18 @@ class PropertyRepository:
         elif filters.air_conditioning is False:
             conditions.append("(pa.AirConditioning = 0 OR pa.AirConditioning IS NULL)")
 
+        if filters.balcony is not None:
+            if filters.balcony:
+                conditions.append("pa.Balcony = 1")
+            else:
+                conditions.append("(pa.Balcony = 0 OR pa.Balcony IS NULL)")
+
+        if filters.private_bathroom is not None:
+            if filters.private_bathroom:
+                conditions.append("pa.PrivateBathroom = 1")
+            else:
+                conditions.append("(pa.PrivateBathroom = 0 OR pa.PrivateBathroom IS NULL)")
+
         # ── Tenant type & Gender ─────────────────────────────────────────────
         if filters.tenant_type or filters.gender:
             joins.append("LEFT JOIN AllowedTenants at ON at.PropertyId = p.Id")
@@ -190,119 +250,49 @@ class PropertyRepository:
                 "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
             )
 
-        # ── Sorting ──────────────────────────────────────────────────────────
-        # Add Id as secondary sort for deterministic pagination (fixes duplicate results)
-        order_clause = "p.CreatedAt DESC, p.Id DESC"
-        if filters.sort_by == "price_low":
-            if filters.search_type == "shared":
-                order_clause = "MIN(r.Month_rent) ASC, p.Id DESC"
-            else:
-                order_clause = "COALESCE(p.MonthlyRent, MIN(r.Month_rent)) ASC, p.Id DESC"
-        elif filters.sort_by == "price_high":
-            if filters.search_type == "shared":
-                order_clause = "MAX(r.Month_rent) DESC, p.Id DESC"
-            else:
-                order_clause = "COALESCE(p.MonthlyRent, MAX(r.Month_rent)) DESC, p.Id DESC"
+        return conditions, joins
+
+    def _count(self, filters: SearchFilters) -> int:
+        """
+        يرجع العدد الكلي للنتائج بدون pagination
+        """
+        params = {}
+        conditions, joins = self._build_where_clause(filters, params)
 
         join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
 
         query = f"""
-        SELECT
-            p.Id,
-            p.Name,
-            p.MonthlyRent,
-            p.Deposite,
-            p.City,
-            p.Government,
-            p.Description,
-            p.NumberOfBedrooms,
-            p.NumberOfLivingRooms,
-            p.TotalRooms,
-            p.AvailableRooms,
-            p.Furnished,
-            p.Size,
-            p.MinimumStay,
-            COUNT(r.Id)          AS TotalRoomsCount,
-            MIN(r.Month_rent)    AS RoomMinPrice,
-            MAX(r.Month_rent)    AS RoomMaxPrice,
-            AVG(r.Month_rent)    AS RoomAvgPrice,
-            pa.Wifi,
-            pa.AirConditioning,
-            pa.Tv,
-            pa.Washer,
-            pa.Refrigerator,
-            pa.FreeParking
+        SELECT COUNT(DISTINCT p.Id) as total
         FROM Properties p
         {join_str}
-        WHERE {' AND '.join(conditions)}
-        GROUP BY
-            p.Id, p.Name, p.MonthlyRent, p.Deposite, p.City, p.Government,
-            p.Description, p.NumberOfBedrooms, p.NumberOfLivingRooms,
-            p.TotalRooms, p.AvailableRooms, p.Furnished, p.Size, p.MinimumStay,
-            pa.Wifi, pa.AirConditioning, pa.Tv, pa.Washer,
-            pa.Refrigerator, pa.FreeParking, p.CreatedAt
-        ORDER BY {order_clause}
-        OFFSET {offset} ROWS
-        FETCH NEXT {limit} ROWS ONLY
+        WHERE {where_clause}
         """
 
-        debug_log("DB_QUERY", f"Property search - offset={offset}, limit={limit}")
-        debug_log("DB_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}, min_price={filters.min_price}, max_price={filters.max_price}")
-        debug_log("DB_SQL", query)
+        debug_log("DB_COUNT_WHERE", where_clause)
+        debug_log("FINAL_SQL_WHERE", where_clause)
+        debug_log("DB_COUNT_PARAMS", f"Filters: city={filters.city}, governorate={filters.governorate}")
 
         with engine.connect() as conn:
-            rows = conn.execute(text(query), params).mappings().all()
-            debug_log("DB_RESULTS", f"Found {len(rows)} properties")
+            result = conn.execute(text(query), params).mappings().first()
+            count = result["total"] if result else 0
+            debug_log("DB_COUNT_RESULT", f"Total properties: {count}")
 
-        return rows
+        return count
 
     def _search_with_cursor(
-        self, 
-        filters: SearchFilters, 
-        cursor: dict = None, 
+        self,
+        filters: SearchFilters,
+        cursor: dict = None,
         limit: int = 5
     ):
         """
         البحث باستخدام cursor-based pagination
         cursor: {'created_at': '2024-01-01T00:00:00', 'id': 123}
         """
-        def _build_location_conditions(
-            name: str, params: dict, prefix: str
-        ) -> list[str]:
-            conds = [
-                f"LOWER(p.City) = LOWER(:{prefix}_name)",
-                f"LOWER(p.Government) = LOWER(:{prefix}_name)",
-                f"p.City LIKE :{prefix}_name_like",
-                f"p.Government LIKE :{prefix}_name_like",
-            ]
-            params[f"{prefix}_name"] = name
-            params[f"{prefix}_name_like"] = f"%{name}%"
-
-            # Limit to first 20 cities to avoid FreeTDS parameter limit
-            cities = location_mapping.get_cities(name)
-            if cities:
-                cities = cities[:20]
-                placeholders = []
-                for i, city in enumerate(cities):
-                    key = f"{prefix}_c{i}"
-                    params[key] = city
-                    placeholders.append(f":{key}")
-                conds.append(f"p.City IN ({', '.join(placeholders)})")
-
-            return conds
-
-        conditions = [
-            "p.IsApproved = 1",
-            "p.IsDeleted = 0",
-            "p.IsRejected = 0",
-            "p.IsDraft = 0",
-        ]
 
         params = {}
-        joins = [
-            "LEFT JOIN PropertyAmenities pa ON pa.PropertyId = p.Id",
-            "LEFT JOIN Rooms r ON r.PropertyId = p.Id AND r.IsDeleted = 0",
-        ]
+        conditions, joins = self._build_where_clause(filters, params)
 
         # Cursor condition
         if cursor:
@@ -312,90 +302,6 @@ class PropertyRepository:
             )
             params['last_created_at'] = cursor['created_at']
             params['last_id'] = cursor['id']
-
-        # Search Type Filter
-        if filters.search_type == "full":
-            # شقة كاملة: PropertyType = 1 + MonthlyRent IS NOT NULL
-            conditions.append("p.PropertyType = 1")
-            conditions.append("p.MonthlyRent IS NOT NULL")
-        elif filters.search_type == "shared":
-            # شقة مشتركة/غرف: PropertyType = 0 + MonthlyRent IS NULL
-            conditions.append("p.PropertyType = 0")
-            conditions.append("p.MonthlyRent IS NULL")
-            conditions.append(
-                "EXISTS (SELECT 1 FROM Rooms r2 "
-                "WHERE r2.PropertyId = p.Id AND r2.IsDeleted = 0)"
-            )
-        elif filters.search_type == "property":
-            # شقق عامة: PropertyType IN (0, 1)
-            conditions.append("p.PropertyType IN (0, 1)")
-
-        # Location
-        if filters.city:
-            loc_conds = _build_location_conditions(filters.city, params, "city")
-            conditions.append(f"({' OR '.join(loc_conds)})")
-
-        if filters.governorate:
-            loc_conds = _build_location_conditions(
-                filters.governorate, params, "gov"
-            )
-            conditions.append(f"({' OR '.join(loc_conds)})")
-
-        # Price
-        if filters.min_price is not None:
-            if filters.search_type == "shared":
-                conditions.append("r.Month_rent >= :min_price")
-            else:
-                conditions.append(
-                    "COALESCE(p.MonthlyRent, r.Month_rent) >= :min_price"
-                )
-            params["min_price"] = filters.min_price
-
-        if filters.max_price is not None:
-            if filters.search_type == "shared":
-                conditions.append("r.Month_rent <= :max_price")
-            else:
-                conditions.append(
-                    "COALESCE(p.MonthlyRent, r.Month_rent) <= :max_price"
-                )
-            params["max_price"] = filters.max_price
-
-        # Furnished
-        if filters.furnished is True:
-            conditions.append("p.Furnished = 1")
-        elif filters.furnished is False:
-            conditions.append("(p.Furnished = 0 OR p.Furnished IS NULL)")
-
-        # Amenities
-        if filters.wifi is True:
-            conditions.append("pa.Wifi = 1")
-        elif filters.wifi is False:
-            conditions.append("(pa.Wifi = 0 OR pa.Wifi IS NULL)")
-
-        if filters.air_conditioning is True:
-            conditions.append("pa.AirConditioning = 1")
-        elif filters.air_conditioning is False:
-            conditions.append("(pa.AirConditioning = 0 OR pa.AirConditioning IS NULL)")
-
-        # Tenant type & Gender
-        if filters.tenant_type or filters.gender:
-            joins.append("LEFT JOIN AllowedTenants at ON at.PropertyId = p.Id")
-
-        if filters.tenant_type == "student":
-            conditions.append("at.AllowsStudents = 1")
-        elif filters.tenant_type == "worker":
-            conditions.append("at.AllowsWorkers = 1")
-
-        if filters.gender == "male":
-            conditions.append(
-                "(at.StudentGender = 0 OR at.WorkerGender = 0 "
-                "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
-            )
-        elif filters.gender == "female":
-            conditions.append(
-                "(at.StudentGender = 1 OR at.WorkerGender = 1 "
-                "OR (at.StudentGender IS NULL AND at.WorkerGender IS NULL))"
-            )
 
         # Sorting
         # Add Id as secondary sort for deterministic pagination (fixes duplicate results)
@@ -412,6 +318,7 @@ class PropertyRepository:
                 order_clause = "COALESCE(p.MonthlyRent, MAX(r.Month_rent)) DESC, p.Id DESC"
 
         join_str = "\n".join(joins)
+        where_clause = " AND ".join(conditions)
 
         query = f"""
         SELECT
@@ -442,7 +349,7 @@ class PropertyRepository:
             pa.FreeParking
         FROM Properties p
         {join_str}
-        WHERE {' AND '.join(conditions)}
+        WHERE {where_clause}
         GROUP BY
             p.Id, p.Name, p.MonthlyRent, p.Deposite, p.City, p.Government,
             p.Description, p.NumberOfBedrooms, p.NumberOfLivingRooms,

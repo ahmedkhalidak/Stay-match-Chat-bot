@@ -56,6 +56,9 @@ class ParsedMessage(BaseModel):
     gender: Optional[str] = None         # "male" | "female"
     shared_room: Optional[bool] = None   # true (shared) | false (single)
 
+    # Housing Type (new intelligent filter)
+    housing_type: Optional[str] = None  # "apartment" | "room" | "shared" | "any"
+
     # Sorting
     sort_by: Optional[str] = None        # "price_low" | "price_high"
 
@@ -78,6 +81,7 @@ class ParsedMessage(BaseModel):
         filters = SearchFilters()
         filters.intent = self.intent
         filters.search_type = self.search_type
+        filters.housing_type = self.housing_type
         filters.tenant_type = self.tenant_type
         filters.gender = self.gender
         filters.shared_room = self.shared_room

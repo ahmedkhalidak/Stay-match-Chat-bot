@@ -5,6 +5,7 @@ from typing import Optional
 class SearchFilters(BaseModel):
     intent: Optional[str] = None
     search_type: Optional[str] = None  # "room" | "property" | "full" | "shared"
+    housing_type: Optional[str] = None  # "apartment" | "room" | "shared" | "any"
     city: Optional[str] = None
     governorate: Optional[str] = None
     min_price: Optional[int] = None

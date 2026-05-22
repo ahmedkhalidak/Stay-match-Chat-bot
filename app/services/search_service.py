@@ -85,6 +85,50 @@ class SearchService:
         )
         debug_log("PIPELINE_FILTERS", filters.model_dump())
 
+        # Detect housing type change and reset context
+        if context.last_search and filters.housing_type and context.last_search.housing_type:
+            if filters.housing_type != context.last_search.housing_type:
+                debug_log("HOUSING_TYPE_CHANGE", f"Detected housing type change: {context.last_search.housing_type} -> {filters.housing_type}")
+                debug_log("PREFERENCES_BEFORE_RESET", context.user_preferences.model_dump())
+                
+                # Reset pagination state
+                context.reset_pagination()
+                context.seen_property_ids.clear()
+                context.seen_room_ids.clear()
+                
+                # Clear user preferences (not just filters) to prevent restoration
+                context.user_preferences.min_budget = None
+                context.user_preferences.max_budget = None
+                context.user_preferences.furnished = None
+                context.user_preferences.wifi = None
+                context.user_preferences.air_conditioning = None
+                context.user_preferences.balcony = None
+                context.user_preferences.private_bathroom = None
+                context.user_preferences.gender = None
+                context.user_preferences.tenant_type = None
+                context.user_preferences.housing_type = filters.housing_type
+                
+                debug_log("PREFERENCES_AFTER_RESET", context.user_preferences.model_dump())
+                
+                # Clear optional filters (preserve only location)
+                filters.furnished = None
+                filters.wifi = None
+                filters.balcony = None
+                filters.private_bathroom = None
+                filters.air_conditioning = None
+                filters.gender = None
+                filters.tenant_type = None
+                filters.min_price = None
+                filters.max_price = None
+                filters.sort_by = None
+                
+                # Preserve location only
+                if not filters.city and not filters.governorate:
+                    filters.city = context.last_search.city
+                    filters.governorate = context.last_search.governorate
+                
+                debug_log("HOUSING_TYPE_RESET", f"Reset context for new housing type: {filters.housing_type}")
+
         intent = filters.intent or "invalid"
 
         if intent == "show_more":
@@ -135,7 +179,7 @@ class SearchService:
         filters = self.flow.apply_user_overrides(context, filters, message)
         self.flow.sync_skipped_slots(context, filters)
         context.update_preferences(filters)
-        debug_log("PREF_APPLIED", filters.model_dump())
+        debug_log("FINAL_FILTERS", filters.model_dump())
 
         clarification, slot = self.flow.get_next_clarification(context, filters)
         if clarification:
@@ -161,6 +205,29 @@ class SearchService:
         memory_store.update_context(session_id, context)
 
         response = self.search_executor.execute(filters, context)
+
+        debug_log("HOUSING_TYPE_CHECK", f"housing_type={filters.housing_type}, result_count={context.last_results_count}, threshold=5")
+
+        # Check if we should ask for housing_type clarification AFTER search execution
+        # Only ask when: housing_type is unknown AND result count is large (>= threshold)
+        if self.flow.should_ask_housing_type_clarification(context, filters, context.last_results_count):
+            debug_log("HOUSING_TYPE_CLARIFICATION", "Asking for housing_type clarification")
+            location_name = filters.city or filters.governorate or ""
+            result_count = context.last_results_count
+            clarification, slot = self.flow.get_housing_type_clarification(context, filters, result_count, location_name)
+            context.pending_slot = slot
+            memory_store.update_context(session_id, context)
+
+            response = ChatResponse(
+                reply=clarification,
+                response_type="clarification",
+                pending_slot=slot,
+                filters=filters,
+                suggestions=self.flow.get_slot_suggestions(slot),
+            )
+        else:
+            debug_log("HOUSING_TYPE_NO_CLARIFICATION", "Not asking for clarification")
+
         self._save_turn(session_id, context, message, response)
         return response
 

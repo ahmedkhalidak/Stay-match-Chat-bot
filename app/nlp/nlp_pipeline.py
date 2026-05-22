@@ -8,6 +8,7 @@ from app.nlp.lexicon import (
     AMENITY_KEYWORDS,
     FULL_KEYWORDS,
     GENDER_KEYWORDS,
+    HOUSING_TYPE_KEYWORDS,
     INTENT_KEYWORDS,
     NEGATION_WORDS,
     PROPERTY_NOUNS,
@@ -19,6 +20,7 @@ from app.nlp.lexicon import (
     SLOT_REPLY_YES_WORDS,
     SORT_KEYWORDS,
     TENANT_KEYWORDS,
+    ANY_HOUSING_TYPE_PHRASES,
 )
 from app.models.search_models import SearchFilters
 from app.services.location_service import LocationService
@@ -71,6 +73,9 @@ class NLPPipeline:
         self._extract_tenant_and_gender(parsed)
         debug_log("TENANT/GENDER", f"{parsed.tenant_type}/{parsed.gender}")
 
+        self._extract_housing_type(parsed)
+        debug_log("HOUSING_TYPE", parsed.housing_type)
+
         self._extract_sort(parsed)
         debug_log("SORT", parsed.sort_by)
 
@@ -96,7 +101,52 @@ class NLPPipeline:
             parsed = self._merge_with_last_search(parsed, last_search)
 
         filters = self.validator.validate(parsed.to_search_filters())
+        
+        # Enforce valid housing_type states
+        filters = self._enforce_housing_type_consistency(filters)
+        debug_log("HOUSING_TYPE_SELECTED", f"housing_type={filters.housing_type}, shared_room={filters.shared_room}, search_type={filters.search_type}")
+        
         debug_log("FINAL_FILTERS", filters.model_dump())
+        return filters
+
+    def _enforce_housing_type_consistency(self, filters: SearchFilters) -> SearchFilters:
+        """
+        Enforce valid housing_type states to prevent conflicting filters.
+
+        Valid states:
+        - Apartment: housing_type="apartment", shared_room=None, search_type="full"
+        - Shared: housing_type="shared", shared_room=None, search_type="shared"
+        - Room: housing_type="room", shared_room=None, search_type="room"
+        - Any: housing_type=None, shared_room=None, search_type="property"
+        """
+        debug_log("FINAL_HOUSING_TYPE", f"Before enforcement: housing_type={filters.housing_type}, search_type={filters.search_type}, shared_room={filters.shared_room}")
+
+        # If housing_type is set, clear shared_room to prevent conflicts
+        if filters.housing_type:
+            filters.shared_room = None
+
+            # Map housing_type to search_type
+            if filters.housing_type == "apartment":
+                filters.search_type = "full"
+            elif filters.housing_type == "shared":
+                filters.search_type = "shared"
+            elif filters.housing_type == "room":
+                filters.search_type = "room"
+            elif filters.housing_type == "any":
+                filters.housing_type = None
+                filters.search_type = "property"
+
+        # If shared_room is set (legacy), map to housing_type
+        elif filters.shared_room is not None:
+            if filters.shared_room:
+                filters.housing_type = "shared"
+                filters.search_type = "shared"
+            else:
+                filters.housing_type = "room"
+                filters.search_type = "room"
+            filters.shared_room = None
+
+        debug_log("SEARCH_TYPE_SELECTED", f"After enforcement: housing_type={filters.housing_type}, search_type={filters.search_type}")
         return filters
 
     def _tokenize(self, text: str) -> list[str]:
@@ -234,18 +284,76 @@ class NLPPipeline:
                     parsed.gender = gender
                     break
 
-        if "مشترك" in text or "shared" in text or "roommate" in text:
-            parsed.shared_room = True
-        elif (
-            "سنجل" in text
-            or "single" in text
-            or "فردي" in text
-            or "اوضه خاصه" in text
-            or "اوضة خاصة" in text
-            or "غرفه خاصه" in text
-            or "غرفة خاصة" in text
-        ):
-            parsed.shared_room = False
+        # DEPRECATED: shared_room is now handled by housing_type
+        # Only set shared_room if housing_type is not already set
+        # This prevents conflicting states like housing_type="apartment" AND shared_room=True
+        if not parsed.housing_type:
+            if "مشترك" in text or "shared" in text or "roommate" in text:
+                parsed.shared_room = True
+            elif (
+                "سنجل" in text
+                or "single" in text
+                or "فردي" in text
+                or "اوضه خاصه" in text
+                or "اوضة خاصة" in text
+                or "غرفه خاصه" in text
+                or "غرفة خاصة" in text
+            ):
+                parsed.shared_room = False
+
+    def _extract_housing_type(self, parsed: ParsedMessage):
+        """
+        Extract housing type from user message with priority rules.
+
+        Priority order (shared keywords override apartment keywords):
+        1. shared (highest priority - must be checked first)
+        2. room
+        3. apartment (lowest priority)
+
+        Examples:
+        - "شقة مشتركة" → shared (not apartment)
+        - "غرفة مشتركة" → shared (not room)
+        - "shared apartment" → shared (not apartment)
+        """
+        text = parsed.normalized_text
+        tokens = parsed.tokens
+
+        # Priority order: shared > room > apartment
+        priority_order = ["shared", "room", "apartment"]
+        matched_keywords = []
+
+        for htype in priority_order:
+            keywords = HOUSING_TYPE_KEYWORDS.get(htype, [])
+            for kw in keywords:
+                if kw in text or kw in tokens:
+                    matched_keywords.append(f"{htype}:{kw}")
+
+            # If any keyword matched for this type, set it and continue checking higher priorities
+            if matched_keywords and matched_keywords[-1].startswith(htype):
+                # Don't return yet - check if higher priority types also match
+                pass
+
+        debug_log("HOUSING_KEYWORDS_MATCHED", matched_keywords)
+        debug_log("ROOM_KEYWORDS_MATCHED", [kw for kw in matched_keywords if kw.startswith("room:")])
+
+        # Determine final housing type based on priority
+        if any(kw.startswith("shared:") for kw in matched_keywords):
+            parsed.housing_type = "shared"
+            debug_log("HOUSING_TYPE_DECISION", f"shared (matched: {[kw for kw in matched_keywords if kw.startswith('shared:')]})")
+            debug_log("HOUSING_TYPE_SOURCE", "priority_rule")
+        elif any(kw.startswith("room:") for kw in matched_keywords):
+            parsed.housing_type = "room"
+            debug_log("HOUSING_TYPE_DECISION", f"room (matched: {[kw for kw in matched_keywords if kw.startswith('room:')]})")
+            debug_log("HOUSING_TYPE_SOURCE", "priority_rule")
+            debug_log("ROOM_DETECTION_RESULT", f"room detected from keywords: {[kw for kw in matched_keywords if kw.startswith('room:')]}")
+        elif any(kw.startswith("apartment:") for kw in matched_keywords):
+            parsed.housing_type = "apartment"
+            debug_log("HOUSING_TYPE_DECISION", f"apartment (matched: {[kw for kw in matched_keywords if kw.startswith('apartment:')]})")
+            debug_log("HOUSING_TYPE_SOURCE", "priority_rule")
+        else:
+            debug_log("HOUSING_TYPE_DECISION", "none")
+            debug_log("HOUSING_TYPE_SOURCE", "no_match")
+            debug_log("ROOM_DETECTION_RESULT", "no room keywords matched")
 
     def _extract_sort(self, parsed: ParsedMessage):
         words = set(parsed.normalized_text.split())
@@ -298,6 +406,10 @@ class NLPPipeline:
         elif pending_slot == "price":
             if is_any or is_no:
                 parsed.price = None
+
+        elif pending_slot == "housing_type":
+            if is_any or any(text == word for word in ANY_HOUSING_TYPE_PHRASES) or any(word in text for word in ANY_HOUSING_TYPE_PHRASES):
+                parsed.housing_type = "any"
                 
     def _determine_search_type(self, parsed: ParsedMessage):
         """بيحدد نوع البحث"""
@@ -381,6 +493,9 @@ class NLPPipeline:
         if not parsed.search_type and llm_result.search_type:
             parsed.search_type = llm_result.search_type
 
+        if not parsed.housing_type and llm_result.housing_type:
+            parsed.housing_type = llm_result.housing_type
+
         if not parsed.location and llm_result.city:
             parsed.location = LocationResult(type="city", en=llm_result.city, confidence=0.85)
             parsed.location_confidence = 0.85
@@ -416,8 +531,20 @@ class NLPPipeline:
         return parsed
 
     def _merge_with_last_search(self, parsed: ParsedMessage, last_search: SearchFilters) -> ParsedMessage:
+        debug_log("PREVIOUS_HOUSING_TYPE", f"last_search housing_type={last_search.housing_type}, search_type={last_search.search_type}")
+        debug_log("CURRENT_HOUSING_TYPE", f"parsed housing_type={parsed.housing_type}, search_type={parsed.search_type}")
+
         if not parsed.search_type and last_search.search_type:
             parsed.search_type = last_search.search_type
+
+        # FIX: Only inherit previous housing_type if current message doesn't have explicit room intent
+        # If current message has room intent (search_type="room"), it should override previous housing_type
+        if not parsed.housing_type and last_search.housing_type:
+            if parsed.search_type != "room":
+                parsed.housing_type = last_search.housing_type
+                debug_log("HOUSING_TYPE_INHERITED", f"Inherited housing_type={last_search.housing_type} from previous search")
+            else:
+                debug_log("HOUSING_TYPE_NOT_INHERITED", f"Current message has room intent, not inheriting previous housing_type={last_search.housing_type}")
 
         if not parsed.location and (last_search.city or last_search.governorate):
             if last_search.city:

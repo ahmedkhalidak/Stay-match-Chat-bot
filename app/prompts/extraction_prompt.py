@@ -64,6 +64,7 @@ LOCATION RULES (Egyptian cities)
 FIELD GUIDE
 ══════════════════════════════
 search_type     : "room" | "property" | "full" | "shared" | null
+housing_type    : "apartment" | "room" | "shared" | "any" | null
 city            : English city name | null
 governorate     : English governorate | null
 min_price       : integer (EGP/month) | null
@@ -82,10 +83,16 @@ sort_by         : "price_low" | "price_high" | "relevance" | null
 EXAMPLES
 ══════════════════════════════
 User: عايز شقة في القاهرة
-→ {{"intent":"property_search","search_type":"property","city":"Cairo",...others null}}
+→ {{"intent":"property_search","search_type":"property","housing_type":"apartment","city":"Cairo",...others null}}
 
-User: عايز أوضة
-→ {{"intent":"room_search","search_type":"room",...others null}}
+User: عايز أوضة في القاهرة
+→ {{"intent":"room_search","search_type":"room","housing_type":"room","city":"Cairo",...others null}}
+
+User: عايز روم ميت في القاهرة
+→ {{"intent":"room_search","search_type":"room","housing_type":"shared","city":"Cairo",...others null}}
+
+User: عايز سكن في القاهرة
+→ {{"intent":"property_search","city":"Cairo",...others null}}
 
 User: ارخص
 → {{"intent":"follow_up","sort_by":"price_low",...others null}}
@@ -104,4 +111,16 @@ User: في الإسكندرية
 
 User: للطلاب في مدينة نصر
 → {{"intent":"room_search","search_type":"room","city":"Nasr City","tenant_type":"student",...others null}}
+
+User: شقة كاملة
+→ {{"intent":"clarification","housing_type":"apartment",...others null}}
+
+User: غرفة
+→ {{"intent":"clarification","housing_type":"room",...others null}}
+
+User: سكن مشترك
+→ {{"intent":"clarification","housing_type":"shared",...others null}}
+
+User: اعرض الكل
+→ {{"intent":"clarification","housing_type":"any",...others null}}
 """

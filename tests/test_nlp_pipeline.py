@@ -98,6 +98,135 @@ class NLPPipelineTests(unittest.TestCase):
         filters = self.pipeline.extract("أي سعر")
         self.assertIsNone(filters.wifi)
 
+    def test_housing_type_priority_rules(self):
+        """
+        Test that shared keywords override apartment keywords.
+        This ensures "شقة مشتركة" is classified as shared, not apartment.
+        """
+        cases = [
+            # Full apartment cases
+            ("شقة كاملة", {"housing_type": "apartment", "search_type": "full"}),
+            ("شقه كامله", {"housing_type": "apartment", "search_type": "full"}),
+            ("apartment", {"housing_type": "apartment", "search_type": "full"}),
+            ("flat", {"housing_type": "apartment", "search_type": "full"}),
+
+            # Shared housing cases (must override apartment keywords)
+            ("شقة مشتركة", {"housing_type": "shared", "search_type": "shared"}),
+            ("شقه مشتركه", {"housing_type": "shared", "search_type": "shared"}),
+            ("سكن مشترك", {"housing_type": "shared", "search_type": "shared"}),
+            ("shared apartment", {"housing_type": "shared", "search_type": "shared"}),
+            ("shared flat", {"housing_type": "shared", "search_type": "shared"}),
+            ("غرفة مشتركة", {"housing_type": "shared", "search_type": "shared"}),
+
+            # Room cases
+            ("غرفة", {"housing_type": "room", "search_type": "room"}),
+            ("غرفه", {"housing_type": "room", "search_type": "room"}),
+            ("غرف", {"housing_type": "room", "search_type": "room"}),
+            ("اوضة", {"housing_type": "room", "search_type": "room"}),
+            ("اوضه", {"housing_type": "room", "search_type": "room"}),
+            ("room", {"housing_type": "room", "search_type": "room"}),
+            ("rooms", {"housing_type": "room", "search_type": "room"}),
+            ("bedroom", {"housing_type": "room", "search_type": "room"}),
+        ]
+
+        for message, expected in cases:
+            with self.subTest(message=message):
+                filters = self.pipeline.extract(message)
+                for field, value in expected.items():
+                    self.assertEqual(getattr(filters, field), value,
+                                   f"Failed for message '{message}': expected {field}={value}, got {getattr(filters, field)}")
+
+    def test_price_filter_extraction(self):
+        """Test price filter extraction for different patterns"""
+        cases = [
+            ("اقل من 5000", {"min_price": None, "max_price": 5000}),
+            ("ازيد من 5000", {"min_price": 5000, "max_price": None}),
+            ("بين 3000 و 7000", {"min_price": 3000, "max_price": 7000}),
+            ("تحت 4000", {"min_price": None, "max_price": 4000}),
+            ("فوق 6000", {"min_price": 6000, "max_price": None}),
+        ]
+
+        for message, expected in cases:
+            with self.subTest(message=message):
+                filters = self.pipeline.extract(message)
+                self.assertEqual(filters.min_price, expected["min_price"],
+                               f"Failed for message '{message}': expected min_price={expected['min_price']}, got {filters.min_price}")
+                self.assertEqual(filters.max_price, expected["max_price"],
+                               f"Failed for message '{message}': expected max_price={expected['max_price']}, got {filters.max_price}")
+
+    def test_price_filter_override_sequence(self):
+        """Test that explicit price overrides clear conflicting previous price filters"""
+        # First message: "اقل من 5000"
+        filters1 = self.pipeline.extract("اقل من 5000")
+        self.assertEqual(filters1.min_price, None)
+        self.assertEqual(filters1.max_price, 5000)
+
+        # Simulate context with previous search
+        last_search = SearchFilters(
+            min_price=None,
+            max_price=5000,
+            city="Cairo",
+        )
+
+        # Second message: "ازيد من 5000" should override previous max_price
+        filters2 = self.pipeline.extract("ازيد من 5000", last_search=last_search)
+        self.assertEqual(filters2.min_price, 5000,
+                        f"Expected min_price=5000, got {filters2.min_price}")
+        self.assertEqual(filters2.max_price, None,
+                        f"Expected max_price=None (cleared), got {filters2.max_price}")
+
+    def test_price_filter_with_location_preserved(self):
+        """Test that location is preserved when price changes"""
+        last_search = SearchFilters(
+            min_price=None,
+            max_price=5000,
+            city="Maadi",
+        )
+
+        filters = self.pipeline.extract("ازيد من 4000", last_search=last_search)
+        self.assertEqual(filters.min_price, 4000)
+        self.assertEqual(filters.max_price, None)
+        self.assertEqual(filters.city, "Maadi", "Location should be preserved")
+
+    def test_room_detection_with_context_switch(self):
+        """
+        Test that room keywords override previous apartment context.
+        This ensures "غرف" after "شقة" switches to room search.
+        """
+        # First message: apartment
+        filters1 = self.pipeline.extract("شقة")
+        self.assertEqual(filters1.housing_type, "apartment")
+        self.assertEqual(filters1.search_type, "full")
+
+        # Second message: room (should override previous apartment)
+        last_search = SearchFilters(
+            housing_type="apartment",
+            search_type="full",
+            city="Cairo",
+        )
+        filters2 = self.pipeline.extract("غرف", last_search=last_search)
+        self.assertEqual(filters2.housing_type, "room",
+                        f"Expected housing_type=room, got {filters2.housing_type}")
+        self.assertEqual(filters2.search_type, "room",
+                        f"Expected search_type=room, got {filters2.search_type}")
+
+    def test_room_detection_with_location(self):
+        """
+        Test that room detection works with location.
+        """
+        cases = [
+            ("غرفة في القاهرة", {"housing_type": "room", "search_type": "room", "governorate": "Cairo"}),
+            ("غرف في المعادي", {"housing_type": "room", "search_type": "room", "city": "Maadi"}),
+            ("rooms in Cairo", {"housing_type": "room", "search_type": "room", "governorate": "Cairo"}),
+        ]
+
+        for message, expected in cases:
+            with self.subTest(message=message):
+                filters = self.pipeline.extract(message)
+                for field, value in expected.items():
+                    self.assertEqual(getattr(filters, field), value,
+                                   f"Failed for message '{message}': expected {field}={value}, got {getattr(filters, field)}")
+
 
 if __name__ == "__main__":
     unittest.main()
