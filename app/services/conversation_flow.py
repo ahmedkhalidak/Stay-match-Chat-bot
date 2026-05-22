@@ -6,9 +6,11 @@ The flow keeps the first-search path short, then lets the user refine naturally.
 from app.core.session_context import SessionContext
 from app.models.response_models import QuickReply
 from app.models.search_models import SearchFilters
+from app.services.suggestion_generator import SuggestionGenerator
 from app.utils.logger import debug_log
+from app.utils.price_parser import PriceParser
 from app.utils.text_normalizer import TextNormalizer
-from app.nlp.lexicon import ANY_HOUSING_TYPE_PHRASES
+from app.nlp.lexicon import ANY_HOUSING_TYPE_PHRASES, HOUSING_TYPE_KEYWORDS
 
 
 class ConversationFlow:
@@ -57,18 +59,84 @@ class ConversationFlow:
     # Housing type clarification threshold
     HOUSING_TYPE_RESULT_THRESHOLD = 5  # Ask for clarification if > 5 results
 
+    # Housing type keywords that trigger root search reset
+    ROOT_SEARCH_HOUSING_KEYWORDS = {
+        "شقة كاملة", "شقه كامله", "شقة", "شقه", "كاملة", "كامله",
+        "شقة مشتركة", "شقه مشتركه", "سكن مشترك", "مشترك",
+        "غرفة", "غرفه", "غرف", "اوضة", "اوضه", "room", "rooms",
+    }
+
+    @staticmethod
+    def _is_root_search_housing_type(message: str) -> bool:
+        """
+        Detect if message contains explicit housing type keyword.
+        This triggers a root search reset.
+        """
+        normalized = TextNormalizer.normalize(message)
+        for keyword in ConversationFlow.ROOT_SEARCH_HOUSING_KEYWORDS:
+            if keyword in normalized:
+                return True
+        return False
+
+    @staticmethod
+    def _reset_secondary_filters(filters: SearchFilters, preserve_location: bool = True) -> SearchFilters:
+        """
+        Reset secondary filters for a new root search.
+        Preserves only city and governorate if preserve_location is True.
+        """
+        debug_log("FILTERS_BEFORE_RESET", filters.model_dump())
+        
+        # Clear secondary filters
+        filters.tenant_type = None
+        filters.gender = None
+        filters.furnished = None
+        filters.wifi = None
+        filters.private_bathroom = None
+        filters.balcony = None
+        filters.air_conditioning = None
+        filters.min_price = None
+        filters.max_price = None
+        filters.sort_by = None
+        filters.shared_room = None
+        
+        debug_log("FILTERS_AFTER_RESET", filters.model_dump())
+        
+        return filters
+
     def apply_preferences_to_filters(
         self,
         context: SessionContext,
         filters: SearchFilters,
+        message: str = None,
     ) -> SearchFilters:
         """
         Fill only truly missing values from stored preferences.
         Explicitly skipped slots must stay open instead of being reintroduced.
+        
+        If housing_type is explicitly provided, treat as root search and reset secondary filters.
         """
         p = context.user_preferences
         if not p:
             return filters
+
+        # ROOT SEARCH RESET: If housing_type is explicitly provided, reset secondary filters
+        if message and filters.housing_type and self._is_root_search_housing_type(message):
+            debug_log("ROOT_SEARCH_DETECTED", f"Housing type explicitly provided: {filters.housing_type}")
+            self._reset_secondary_filters(filters, preserve_location=True)
+            
+            # Clear secondary filters from preferences to prevent re-inheritance
+            p.tenant_type = None
+            p.gender = None
+            p.furnished = None
+            p.wifi = None
+            p.private_bathroom = None
+            p.balcony = None
+            p.air_conditioning = None
+            p.min_budget = None
+            p.max_budget = None
+            p.shared_room = None
+            
+            debug_log("PREFERENCES_BEFORE_MERGE", p.model_dump())
 
         if (
             "location" not in context.skipped_slots
@@ -85,18 +153,21 @@ class ConversationFlow:
                 filters.city = p.preferred_location
 
         if "price" not in context.skipped_slots:
-            from app.utils.logger import debug_log
             debug_log("PRICE_PARSED", f"min_price={filters.min_price}, max_price={filters.max_price}")
             debug_log("PREVIOUS_PRICE_FILTERS", f"min_budget={p.min_budget}, max_budget={p.max_budget}")
             
-            # FIX: When user explicitly sets a new price constraint, clear conflicting previous price filters
-            # Example: User says "ازيد من 5000" (min_price=5000, max_price=None)
-            # Should NOT inherit previous max_price=5000 from "اقل من 5000"
+            # RULE 8: Price override logic using PriceParser
             if filters.min_price is not None or filters.max_price is not None:
-                # User explicitly set a price constraint - don't inherit from preferences
-                # This prevents conflicting filters like min_price=5000 AND max_price=5000
-                debug_log("PRICE_OVERRIDE_DETECTED", "User explicitly set price constraint - not inheriting from preferences")
-                pass
+                # User explicitly set a new price constraint - apply override logic
+                filters.min_price, filters.max_price = PriceParser.apply_price_override(
+                    current_min=p.min_budget,
+                    current_max=p.max_budget,
+                    new_min=filters.min_price,
+                    new_max=filters.max_price,
+                )
+                # Update preferences with the new values
+                p.min_budget = filters.min_price
+                p.max_budget = filters.max_price
             else:
                 # No explicit price constraint - inherit from preferences
                 if p.min_budget is not None:
@@ -131,8 +202,8 @@ class ConversationFlow:
         if filters.housing_type is None and p.housing_type:
             filters.housing_type = p.housing_type
 
-        from app.utils.logger import debug_log
-        debug_log("PREFERENCES_AFTER_MERGE", filters.model_dump())
+        debug_log("PREFERENCES_AFTER_MERGE", p.model_dump())
+        debug_log("FINAL_FILTERS", filters.model_dump())
         
         return filters
 
@@ -289,30 +360,8 @@ class ConversationFlow:
         return None, None
 
     def get_slot_suggestions(self, slot: str | None) -> list[QuickReply]:
-        suggestions = {
-            "search_type": [
-                QuickReply(label="أوضة", value="أوضة"),
-                QuickReply(label="شقة كاملة", value="شقة كاملة"),
-                QuickReply(label="شقة مشتركة", value="شقة مشتركة"),
-            ],
-            "location": [
-                QuickReply(label="المعادي", value="في المعادي"),
-                QuickReply(label="الإسكندرية", value="في الإسكندرية"),
-                QuickReply(label="أي مكان", value="أي مكان"),
-            ],
-            "price": [
-                QuickReply(label="تحت 5000", value="تحت 5000"),
-                QuickReply(label="3000 - 7000", value="من 3000 لـ 7000"),
-                QuickReply(label="أي سعر", value="أي سعر"),
-            ],
-            "housing_type": [
-                QuickReply(label="🏠 شقة كاملة", value="شقة كاملة"),
-                QuickReply(label="🚪 غرفة", value="غرفة"),
-                QuickReply(label="👥 سكن مشترك", value="سكن مشترك"),
-                QuickReply(label="اعرض الكل", value="اعرض الكل"),
-            ],
-        }
-        return suggestions.get(slot or "", [])
+        """Delegate to SuggestionGenerator for slot-based suggestions."""
+        return SuggestionGenerator.get_slot_suggestions(slot)
 
     def build_result_suggestions(
         self,
@@ -320,32 +369,20 @@ class ConversationFlow:
         filters: SearchFilters,
         has_more: bool,
     ) -> list[QuickReply]:
-        suggestions: list[QuickReply] = []
-
-        if has_more:
-            suggestions.append(QuickReply(label="المزيد", value="المزيد"))
-        if filters.min_price is None and filters.max_price is None:
-            suggestions.append(QuickReply(label="الأرخص", value="أرخص"))
-        if filters.furnished is None:
-            suggestions.append(QuickReply(label="مفروشة", value="مفروشة"))
-        if filters.wifi is None:
-            suggestions.append(QuickReply(label="واي فاي", value="فيها واي فاي"))
-        if context.total_searches >= 1:
-            suggestions.append(QuickReply(label="مكان تاني", value="في الإسكندرية"))
-
-        return suggestions[:4]
+        """Delegate to SuggestionGenerator for result-based suggestions."""
+        total_results = context.last_results_count
+        return SuggestionGenerator.generate_result_suggestions(
+            filters=filters,
+            total_results=total_results,
+            has_more=has_more,
+        )
 
     def build_no_results_suggestions(
         self,
         filters: SearchFilters,
     ) -> list[QuickReply]:
-        suggestions = [
-            QuickReply(label="أي مكان", value="أي مكان"),
-            QuickReply(label="تحت 10000", value="تحت 10000"),
-        ]
-        if filters.city or filters.governorate:
-            suggestions.append(QuickReply(label="الإسكندرية", value="في الإسكندرية"))
-        return suggestions
+        """Delegate to SuggestionGenerator for no-results suggestions."""
+        return SuggestionGenerator.generate_no_results_suggestions(filters)
 
     def _matches_any(self, text: str, phrases: set[str]) -> bool:
         normalized_phrases = {

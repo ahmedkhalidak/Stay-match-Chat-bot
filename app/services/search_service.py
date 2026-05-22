@@ -175,11 +175,10 @@ class SearchService:
             self._save_turn(session_id, context, message, response)
             return response
 
-        filters = self.flow.apply_preferences_to_filters(context, filters)
+        filters = self.flow.apply_preferences_to_filters(context, filters, message)
         filters = self.flow.apply_user_overrides(context, filters, message)
         self.flow.sync_skipped_slots(context, filters)
         context.update_preferences(filters)
-        debug_log("FINAL_FILTERS", filters.model_dump())
 
         clarification, slot = self.flow.get_next_clarification(context, filters)
         if clarification:
