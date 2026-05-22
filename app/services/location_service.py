@@ -20,6 +20,15 @@ class LocationService:
         self.all_locations: list[str] = []
         self.location_map: dict[str, dict] = {}
         self._prepare_locations()
+        
+        # Words that should NOT be treated as locations
+        self.non_location_words = {
+            "تاني", "كمان", "زيادة", "المزيد", "باقي", "بقية", 
+            "كمل", "continue", "more", "next", "show",
+            "اوضه", "اوضة", "غرفه", "غرفة", "room", "bedroom",
+            "شقه", "شقة", "شقق", "apartment", "flat",
+            "جيب", "عندك", "عندكو", "عندكم", "عندنا",
+        }
 
     def _prepare_locations(self):
         for gov in self.locations:
@@ -72,11 +81,18 @@ class LocationService:
         return text
 
     def detect_location(self, text: str) -> dict | None:
+        debug_log("LOCATION_DETECT", f"Detecting location in: {text[:60]}...")
         norm = TextNormalizer.normalize(text)
         if not norm:
+            debug_log("LOCATION_DETECT", "Normalized text is empty")
             return None
 
+        # Skip if text only contains non-location words
         words = norm.split()
+        if all(word in self.non_location_words for word in words if word):
+            debug_log("LOCATION_SKIP", "Text only contains non-location words")
+            return None
+
         sorted_locations = sorted(self.all_locations, key=len, reverse=True)
 
         # 1. Exact named-location matches are the safest signal.
@@ -100,10 +116,9 @@ class LocationService:
                 debug_log("LOC_PHONETIC_EXACT", original)
                 return self.location_map[original]
 
-        # 3. Fuzzy matching remains available for misspellings, but with a stronger
-        # threshold so ordinary conversation words do not become cities.
+        # 3. Fuzzy matching with higher threshold to reduce false positives
         for candidate in candidates:
-            if len(candidate.replace(" ", "")) < 4:
+            if len(candidate.replace(" ", "")) < 3:
                 continue
             candidate_variants = {
                 candidate,
@@ -114,11 +129,25 @@ class LocationService:
                     variant,
                     self.all_locations,
                     n=1,
-                    cutoff=0.82,
+                    cutoff=0.85,  # Increased to reduce false positives
                 )
                 if matches:
                     debug_log("LOC_FUZZY", matches[0])
                     return self.location_map[matches[0]]
+
+        # 4. Try word-by-word matching for multi-word locations
+        for word in words:
+            if len(word) < 3:
+                continue
+            matches = difflib.get_close_matches(
+                word,
+                self.all_locations,
+                n=1,
+                cutoff=0.85,  # Increased to reduce false positives
+            )
+            if matches:
+                debug_log("LOC_WORD_FUZZY", matches[0])
+                return self.location_map[matches[0]]
 
         return None
 

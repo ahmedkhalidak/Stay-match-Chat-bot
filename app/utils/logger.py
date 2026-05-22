@@ -1,7 +1,7 @@
 import os
 
 
-DEBUG_LOGS_ENABLED = os.getenv("DEBUG_LOGS", "").lower() in {
+DEBUG_LOGS_ENABLED = os.getenv("DEBUG_LOGS", "true").lower() in {
     "1",
     "true",
     "yes",

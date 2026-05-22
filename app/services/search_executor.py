@@ -34,19 +34,37 @@ class SearchExecutor:
         filters: SearchFilters,
         context: SessionContext,
     ) -> ChatResponse:
+        debug_log("SEARCH_EXECUTOR", f"Executing search - type: {filters.search_type}, city: {filters.city}, governorate: {filters.governorate}")
         cache_key = self._filters_hash(filters)
-        offset = context.current_offset
+        
+        # Use cursor-based pagination if enabled
+        use_cursor = context.use_cursor_pagination
+        cursor = context.last_cursor if use_cursor else None
+        offset = context.current_offset if not use_cursor else 0
         limit = context.page_size
         page_num = (offset // limit) + 1
+        debug_log("SEARCH_EXECUTOR_OFFSET", f"Using offset: {offset}, page_num: {page_num}, cursor_pagination: {use_cursor}")
 
         if filters.search_type == "room":
-            debug_log("SEARCH", f"room offset={offset} limit={limit}")
-            page_results = self.room_repo.search(filters, offset=offset, limit=limit)
-            next_page = self.room_repo.search(filters, offset=offset + limit, limit=1)
+            if use_cursor:
+                debug_log("SEARCH", f"room cursor={cursor} limit={limit}")
+                page_results, next_cursor, has_more = self.room_repo.search_with_cursor(filters, cursor, limit)
+            else:
+                debug_log("SEARCH", f"room offset={offset} limit={limit}")
+                page_results = self.room_repo.search(filters, offset=offset, limit=limit)
+                next_page = self.room_repo.search(filters, offset=offset + limit, limit=1)
+                has_more = len(next_page) > 0
+                next_cursor = None
         elif filters.search_type in ("property", "full", "shared"):
-            debug_log("SEARCH", f"{filters.search_type} offset={offset} limit={limit}")
-            page_results = self.property_repo.search(filters, offset=offset, limit=limit)
-            next_page = self.property_repo.search(filters, offset=offset + limit, limit=1)
+            if use_cursor:
+                debug_log("SEARCH", f"{filters.search_type} cursor={cursor} limit={limit}")
+                page_results, next_cursor, has_more = self.property_repo.search_with_cursor(filters, cursor, limit)
+            else:
+                debug_log("SEARCH", f"{filters.search_type} offset={offset} limit={limit}")
+                page_results = self.property_repo.search(filters, offset=offset, limit=limit)
+                next_page = self.property_repo.search(filters, offset=offset + limit, limit=1)
+                has_more = len(next_page) > 0
+                next_cursor = None
         else:
             return ChatResponse(
                 reply="ابدأ بتحديد إنك عايز أوضة ولا شقة.",
@@ -56,14 +74,16 @@ class SearchExecutor:
                 suggestions=self.flow.get_slot_suggestions("search_type"),
             )
 
-        has_more = len(next_page) > 0
         context.cache_key = cache_key
-        if offset == 0:
-            context.cached_results = list(page_results)
+        if use_cursor:
+            context.update_cursor(next_cursor)
         else:
-            context.cached_results.extend(list(page_results))
+            if offset == 0:
+                context.cached_results = list(page_results)
+            else:
+                context.cached_results.extend(list(page_results))
 
-        if not page_results and offset > 0:
+        if not page_results and (offset > 0 or cursor):
             return ChatResponse(
                 reply="دي كانت آخر النتائج المتاحة للبحث ده.",
                 response_type="end_of_results",
@@ -75,7 +95,7 @@ class SearchExecutor:
                 ),
             )
 
-        if not page_results and offset == 0:
+        if not page_results and offset == 0 and not cursor:
             location_name = filters.city or filters.governorate or "المناطق المتاحة"
             search_type_name = {
                 "room": "أوض",
@@ -100,13 +120,18 @@ class SearchExecutor:
             )
 
         context.last_results_count = len(page_results)
-        if offset == 0:
+        
+        # Mark seen IDs on every page to prevent duplicates (not just first page)
+        ids = [row.get("Id") for row in page_results if row.get("Id")]
+        if filters.search_type == "room":
+            context.mark_seen(room_ids=ids)
+            debug_log("SEARCH_EXECUTOR_SEEN", f"Marked {len(ids)} room IDs as seen, total seen: {len(context.seen_room_ids)}")
+        else:
+            context.mark_seen(property_ids=ids)
+            debug_log("SEARCH_EXECUTOR_SEEN", f"Marked {len(ids)} property IDs as seen, total seen: {len(context.seen_property_ids)}")
+        
+        if offset == 0 and not cursor:
             context.push_search(filters, len(page_results))
-            ids = [row.get("Id") for row in page_results if row.get("Id")]
-            if filters.search_type == "room":
-                context.mark_seen(room_ids=ids)
-            else:
-                context.mark_seen(property_ids=ids)
 
         if filters.search_type == "room":
             reply, cards = self.formatter.format_rooms(

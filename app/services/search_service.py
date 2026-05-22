@@ -4,6 +4,7 @@ SearchService - main chatbot orchestrator.
 
 from app.core.memory_store import memory_store
 from app.core.session_context import SessionContext
+from app.core.conversation_memory import conversation_memory
 from app.models.response_models import ChatResponse
 from app.models.search_models import SearchFilters
 from app.nlp.nlp_pipeline import NLPPipeline
@@ -13,12 +14,13 @@ from app.services.knowledge_service import KnowledgeService
 from app.services.search_executor import SearchExecutor
 from app.utils.logger import debug_log
 
-
+from app.services.rag_service import RagService
+    
 class SearchService:
 
     def __init__(self):
         self.nlp_pipeline = NLPPipeline()
-        self.knowledge = KnowledgeService()
+        self.rag = RagService()
         self.chat = ChatService()
         self.flow = ConversationFlow()
         self.search_executor = SearchExecutor(flow=self.flow)
@@ -49,12 +51,28 @@ class SearchService:
         context.add_message("user", user_msg)
         context.add_message("assistant", response.reply)
         memory_store.update_context(session_id, context)
+        
+        # Also add to enhanced LangChain conversation memory
+        conversation_memory.add_message(session_id, "user", user_msg)
+        conversation_memory.add_message(session_id, "assistant", response.reply)
 
     def handle_message(self, session_id: str, message: str) -> ChatResponse:
+        debug_log("SEARCH_SERVICE", f"Handling message - session: {session_id}, message: {message[:100]}...")
         context = memory_store.get_context(session_id)
         context.turn_count += 1
 
+        # Sync with enhanced conversation memory if first message
+        if context.turn_count == 1:
+            conversation_memory.sync_with_session_context(session_id, context)
+
+        # Get enhanced conversation context from LangChain memory
+        enhanced_history = conversation_memory.get_conversation_context(session_id)
         history_text = context.get_history_text()
+        
+        # Use enhanced history if available, otherwise fall back to original
+        if enhanced_history:
+            history_text = enhanced_history
+            debug_log("MEMORY_ENHANCED", "Using LangChain conversation memory")
         debug_log("SESSION", session_id)
         debug_log("TURN", context.turn_count)
         debug_log("MESSAGE", message)
@@ -86,7 +104,7 @@ class SearchService:
             return response
 
         if intent == "faq":
-            answer = self.knowledge.find_answer(message)
+            answer = self.rag.answer(message)
             response = ChatResponse(
                 reply=answer or "مش معايا إجابة دقيقة على السؤال ده حالياً.",
                 response_type="faq",
@@ -95,7 +113,7 @@ class SearchService:
             return response
 
         if intent == "invalid":
-            answer = self.knowledge.find_answer(message)
+            answer = self.rag.answer(message)
             if answer:
                 response = ChatResponse(
                     reply=answer,
@@ -137,6 +155,7 @@ class SearchService:
             filters.sort_by = "relevance"
 
         context.reset_pagination()
+        context.use_cursor_pagination = False  # Disabled temporarily due to FreeTDS parameter limit
         context.last_search = filters.model_copy(deep=True)
         context.pending_slot = None
         memory_store.update_context(session_id, context)
@@ -161,10 +180,23 @@ class SearchService:
             return response
 
         filters = context.last_search.model_copy(deep=True)
+        
+        # Disable cursor-based pagination due to FreeTDS parameter limit
+        context.use_cursor_pagination = False
+        
+        # Simply increment offset
+        previous_offset = context.current_offset
         context.current_offset += context.page_size
+        debug_log("SHOW_MORE", f"Previous offset: {previous_offset}, New offset: {context.current_offset}, Session: {session_id}")
+        
         memory_store.update_context(session_id, context)
 
         response = self.search_executor.execute(filters, context)
+        
+        # Verify offset was not overwritten
+        loaded_context = memory_store.get_context(session_id)
+        debug_log("SHOW_MORE_VERIFY", f"Saved offset: {context.current_offset}, Loaded offset: {loaded_context.current_offset}")
+        
         self._save_turn(session_id, context, message, response)
         return response
 

@@ -111,7 +111,6 @@ PROPERTY_NOUNS = {
 
 SEARCH_TYPE_BLOCKED_INTENTS = {
     "small_talk",
-    "faq",
     "show_more",
     "go_back",
 }

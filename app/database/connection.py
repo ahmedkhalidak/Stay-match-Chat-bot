@@ -8,4 +8,6 @@ settings = Settings()
 engine = create_engine(
     settings.db_url,
     pool_pre_ping=True,
+    echo=True,
+    connect_args={"trustservercertificate": "yes"}
 )

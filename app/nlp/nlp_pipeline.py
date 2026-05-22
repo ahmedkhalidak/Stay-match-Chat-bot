@@ -59,7 +59,7 @@ class NLPPipeline:
         self._detect_intent(parsed)
         debug_log("INTENT", f"{parsed.intent} ({parsed.intent_confidence})")
 
-        self._extract_location(parsed)
+        self._extract_location(parsed, last_search)
         debug_log("LOCATION", parsed.location.model_dump() if parsed.location else None)
 
         self._extract_price(parsed)
@@ -148,7 +148,7 @@ class NLPPipeline:
             parsed.intent = "invalid"
             parsed.intent_confidence = 0.0
 
-    def _extract_location(self, parsed: ParsedMessage):
+    def _extract_location(self, parsed: ParsedMessage, last_search: SearchFilters = None):
         loc = None
         if " بدل " in f" {parsed.normalized_text} ":
             replacement_text = parsed.normalized_text.split(" بدل ", 1)[0]
@@ -156,6 +156,16 @@ class NLPPipeline:
 
         if not loc:
             loc = self.location_service.detect_location(parsed.raw_text)
+        
+        # If no location detected in current message, use location from last_search
+        if not loc and last_search:
+            if last_search.city:
+                loc = {"type": "city", "en": last_search.city}
+                debug_log("LOCATION_FROM_LAST", f"Using city from last_search: {last_search.city}")
+            elif last_search.governorate:
+                loc = {"type": "governorate", "en": last_search.governorate}
+                debug_log("LOCATION_FROM_LAST", f"Using governorate from last_search: {last_search.governorate}")
+        
         if loc:
             parsed.location = LocationResult(
                 type=loc.get("type", ""),
@@ -355,7 +365,12 @@ class NLPPipeline:
             parsed.intent_confidence = 0.85
 
     def _llm_fallback(self, parsed: ParsedMessage, message: str, history: str) -> ParsedMessage:
+        debug_log("LLM_FALLBACK", f"Calling LLM - confidence was {parsed.overall_confidence:.2f}")
+        debug_log("LLM_INPUT", f"Message: {message[:100]}...")
+        
         llm_result = self.llm_extractor.extract(message, history)
+        
+        debug_log("LLM_OUTPUT", f"Intent: {llm_result.intent}, City: {llm_result.city}, Governorate: {llm_result.governorate}, SearchType: {llm_result.search_type}")
 
         parsed.llm_reason = f"LLM called — confidence was {parsed.overall_confidence:.2f}"
 

@@ -12,6 +12,13 @@ class PriceExtractor:
             "max_price": None,
         }
 
+        # ── Standalone number (treat as max price) ─────
+        standalone_pattern = r"^(\d+)$"
+        match = re.search(standalone_pattern, msg.strip())
+        if match:
+            result["max_price"] = int(match.group(1))
+            return result
+
         # ── Range extraction ─────────────────────
         range_patterns = [
             r"من\s*(\d+)\s*لـ?\s*(\d+)",

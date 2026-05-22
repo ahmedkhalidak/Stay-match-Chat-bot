@@ -45,6 +45,11 @@ class SessionContext(BaseModel):
     cached_results: List[dict] = Field(default_factory=list)
     cache_key: str = ""
 
+    # Cursor-based pagination support
+    last_cursor: dict | None = None
+    next_cursor: dict | None = None
+    use_cursor_pagination: bool = False
+
     # ── NEW: Smart conversation tracking ──
     user_preferences: UserPreferences = Field(default_factory=UserPreferences)
     seen_property_ids: set[int] = Field(default_factory=set)
@@ -94,6 +99,18 @@ class SessionContext(BaseModel):
         self.current_offset = 0
         self.cached_results = []
         self.cache_key = ""
+        self.last_cursor = None
+        self.next_cursor = None
+
+    def update_cursor(self, cursor: dict):
+        """تحديث الـ cursor بعد كل بحث"""
+        self.last_cursor = cursor
+        self.next_cursor = cursor
+
+    def reset_cursor(self):
+        """إعادة تعيين الـ cursor"""
+        self.last_cursor = None
+        self.next_cursor = None
 
     def mark_seen(self, property_ids: list[int] = None, room_ids: list[int] = None):
         """Track IDs the user has already seen to avoid duplicates"""
