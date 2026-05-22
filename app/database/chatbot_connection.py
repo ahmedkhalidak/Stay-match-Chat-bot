@@ -26,6 +26,20 @@ def get_chatbot_engine():
             max_overflow=10,
             echo=True
         )
+        
+        # Log chatbot database connection
+        try:
+            with _chatbot_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                # Parse connection string to extract database info
+                db_url = settings.chatbot_db_url
+                if "postgresql" in db_url:
+                    debug_log("CHATBOT_DB_CONNECTED", f"PostgreSQL - URL: {db_url.split('@')[-1] if '@' in db_url else db_url}")
+                else:
+                    debug_log("CHATBOT_DB_CONNECTED", f"Database - URL: {db_url}")
+        except Exception as e:
+            debug_log("CHATBOT_DB_ERROR", f"Failed to connect: {str(e)}")
+        
         debug_log("CHATBOT_DB", "Chatbot database engine created")
     return _chatbot_engine
 

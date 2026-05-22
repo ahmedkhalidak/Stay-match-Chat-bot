@@ -43,7 +43,7 @@ class Settings(BaseSettings):
                 self.chatbot_db_user, self.chatbot_db_password]):
             encoded_password = quote_plus(self.chatbot_db_password)
             return (
-                f"postgresql+psycopg://{self.chatbot_db_user}:{encoded_password}"
+                f"postgresql+psycopg2://{self.chatbot_db_user}:{encoded_password}"
                 f"@{self.chatbot_db_host}:{self.chatbot_db_port}/{self.chatbot_db_name}"
             )
         
