@@ -24,8 +24,8 @@ class MemoryStore:
             from app.database.repositories.message_repository import MessageRepository
             self.conversation_repo = ConversationRepository()
             self.message_repo = MessageRepository()
-            self.use_database = False
-            debug_log("MEMORY_INIT", "Memory-only mode (database disabled)")
+            self.use_database = True
+            debug_log("MEMORY_INIT", "Database storage enabled")
         except Exception as e:
             debug_log("MEMORY_INIT", f"Database storage disabled (fallback to memory only): {str(e)}")
             self.use_database = False

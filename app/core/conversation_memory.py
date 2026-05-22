@@ -37,8 +37,8 @@ class ConversationMemory:
         try:
             self.message_repo = MessageRepository()
             self.conversation_repo = ConversationRepository()
-            self.use_database = False
-            debug_log("CONV_MEMORY_INIT", "Memory-only mode (database disabled)")
+            self.use_database = True
+            debug_log("CONV_MEMORY_INIT", "Database storage enabled")
         except Exception as e:
             debug_log("CONV_MEMORY_INIT", f"Database storage disabled (fallback to memory only): {str(e)}")
             self.use_database = False
