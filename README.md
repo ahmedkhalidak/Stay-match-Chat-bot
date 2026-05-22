@@ -335,3 +335,6 @@ Before deployment, confirm:
 - Conversation memory is in-process memory only; restarting the service clears sessions.
 - The LLM fallback depends on the configured Groq API key and external availability.
 - Search results depend on the current database contents and approval flags.
+
+
+

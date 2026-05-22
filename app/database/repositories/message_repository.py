@@ -46,7 +46,7 @@ class MessageRepository:
                     text("""
                         INSERT INTO messages (conversation_id, role, content, message_type, metadata)
                         VALUES (:conversation_id, :role, :content, :message_type, :metadata)
-                        SELECT SCOPE_IDENTITY() as id
+                        RETURNING id
                     """),
                     {
                         "conversation_id": conversation_id,
@@ -87,7 +87,7 @@ class MessageRepository:
                         FROM messages
                         WHERE conversation_id = :conversation_id
                         ORDER BY created_at ASC
-                        OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY
+                        LIMIT :limit
                     """),
                     {"conversation_id": conversation_id, "limit": limit}
                 )
@@ -131,7 +131,7 @@ class MessageRepository:
                         INNER JOIN conversations c ON m.conversation_id = c.id
                         WHERE c.session_id = :session_id
                         ORDER BY m.created_at ASC
-                        OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY
+                        LIMIT :limit
                     """),
                     {"session_id": session_id, "limit": limit}
                 )
@@ -174,7 +174,7 @@ class MessageRepository:
                         FROM messages
                         WHERE conversation_id = :conversation_id
                         ORDER BY created_at DESC
-                        OFFSET 0 ROWS FETCH NEXT :n ROWS ONLY
+                        LIMIT :n
                     """),
                     {"conversation_id": conversation_id, "n": n}
                 )

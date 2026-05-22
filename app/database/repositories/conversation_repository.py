@@ -42,7 +42,7 @@ class ConversationRepository:
                     text("""
                         INSERT INTO conversations (session_id, user_id, metadata)
                         VALUES (:session_id, :user_id, :metadata)
-                        SELECT SCOPE_IDENTITY() as id
+                        RETURNING id
                     """),
                     {
                         "session_id": session_id,
@@ -110,7 +110,7 @@ class ConversationRepository:
                     conn.execute(
                         text("""
                             UPDATE conversations
-                            SET last_activity = GETDATE(),
+                            SET last_activity = CURRENT_TIMESTAMP,
                                 message_count = :message_count
                             WHERE session_id = :session_id
                         """),
@@ -120,7 +120,7 @@ class ConversationRepository:
                     conn.execute(
                         text("""
                             UPDATE conversations
-                            SET last_activity = GETDATE()
+                            SET last_activity = CURRENT_TIMESTAMP
                             WHERE session_id = :session_id
                         """),
                         {"session_id": session_id}
@@ -143,7 +143,7 @@ class ConversationRepository:
                     text("""
                         UPDATE conversations
                         SET message_count = message_count + 1,
-                            last_activity = GETDATE()
+                            last_activity = CURRENT_TIMESTAMP
                         WHERE session_id = :session_id
                     """),
                     {"session_id": session_id}
@@ -196,7 +196,7 @@ class ConversationRepository:
                         FROM conversations
                         WHERE user_id = :user_id
                         ORDER BY last_activity DESC
-                        OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY
+                        LIMIT :limit
                     """),
                     {"user_id": user_id, "limit": limit}
                 )

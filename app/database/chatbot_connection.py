@@ -24,8 +24,7 @@ def get_chatbot_engine():
             pool_pre_ping=True,
             pool_size=5,
             max_overflow=10,
-            echo=True,
-            connect_args={"trustservercertificate": "yes"}
+            echo=True
         )
         debug_log("CHATBOT_DB", "Chatbot database engine created")
     return _chatbot_engine
