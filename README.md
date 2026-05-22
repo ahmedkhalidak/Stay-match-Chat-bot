@@ -1,30 +1,110 @@
 # StayMatch AI Service
 
-Backend service for the StayMatch housing assistant. It understands Egyptian Arabic housing requests, asks only for the missing information needed to continue, searches rooms or apartments, and returns structured responses that are ready for a frontend chat UI.
+<div align="center">
 
-## What It Does
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-- Understands room, full apartment, and shared apartment searches.
-- Supports Egyptian Arabic, English keywords, typo-tolerant location matching, and follow-up messages.
-- Uses a hybrid NLP strategy:
-  - deterministic rules first for fast, predictable extraction
-  - LLM fallback only when rule confidence is low
-- Maintains per-session conversation context, preferences, search history, and pagination.
-- Returns clean JSON payloads with quick replies, result cards, and pagination metadata.
+**An intelligent Arabic housing assistant powered by NLP and LLM**
 
-## Main Flow
+</div>
 
-The initial search flow is intentionally short:
+---
 
-1. User states the housing type.
-2. Bot asks for the location if it is missing.
-3. Bot asks for budget if it is still useful to ask.
-4. Bot searches and returns structured results.
-5. User can refine with follow-ups such as `أرخص`, `فيها واي فاي`, `مش عايز تكييف`, or `في الإسكندرية بدل المعادي`.
+## Overview
 
-Example:
+StayMatch AI Service is a sophisticated backend service for the StayMatch housing platform. It understands Egyptian Arabic housing requests, intelligently gathers missing information through conversation, searches for rooms or apartments, and returns structured, frontend-ready responses.
 
-```text
+### Key Features
+
+- **🌍 Multi-Language Support**: Native Egyptian Arabic with English keyword support
+- **🧠 Hybrid NLP Engine**: Combines deterministic rule-based extraction with LLM fallback for optimal performance
+- **💬 Conversational AI**: Maintains context, asks clarifying questions, and handles follow-up queries
+- **🔍 Smart Search**: Supports rooms, full apartments, and shared apartments with advanced filtering
+- **📍 Location Intelligence**: Typo-tolerant matching across Egyptian governorates and cities
+- **📊 Structured Responses**: Clean JSON payloads with quick replies, result cards, and pagination
+- **🗄️ PostgreSQL Integration**: Modern database layer with Neon PostgreSQL support
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [How It Works](#how-it-works)
+- [Supported Features](#supported-features)
+- [API Documentation](#api-documentation)
+- [Frontend Integration](#frontend-integration)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Database Migration](#database-migration)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Architecture
+
+### System Architecture
+
+```mermaid
+graph TD
+    A[User Message] --> B[FastAPI /chat Endpoint]
+    B --> C[SearchService]
+    C --> D[NLPPipeline]
+    D --> E[TextNormalizer]
+    D --> F[NLP Lexicon]
+    D --> G[Rule-Based Extraction]
+    D --> H[LLM Fallback]
+    D --> I[FilterValidator]
+    C --> J[ConversationFlow]
+    C --> K[SearchExecutor]
+    K --> L[Repositories]
+    K --> M[ResponseFormatter]
+    B --> N[ChatResponse JSON]
+```
+
+### Module Structure
+
+| Module | Description | File |
+|--------|-------------|------|
+| **API Layer** | HTTP endpoints and request handling | `app/api/routes.py` |
+| **Orchestration** | Main service coordination | `app/services/search_service.py` |
+| **Search Execution** | Database queries and pagination | `app/services/search_executor.py` |
+| **Conversation Flow** | State machine for dialogue | `app/services/conversation_flow.py` |
+| **NLP Pipeline** | Natural language processing | `app/nlp/nlp_pipeline.py` |
+| **NLP Vocabulary** | Token dictionaries and lexicons | `app/nlp/lexicon.py` |
+| **Location Service** | Geographic matching | `app/services/location_service.py` |
+| **Response Formatter** | JSON response shaping | `app/formatters/response_formatter.py` |
+| **Session Context** | In-memory conversation state | `app/core/session_context.py` |
+| **Memory Store** | Persistent conversation storage | `app/core/memory_store.py` |
+| **Conversation Memory** | Database-backed memory | `app/core/conversation_memory.py` |
+| **Room Repository** | Room data access | `app/database/repositories/room_repository.py` |
+| **Property Repository** | Property data access | `app/database/repositories/property_repository.py` |
+| **Conversation Repository** | Chat conversation storage | `app/database/repositories/conversation_repository.py` |
+| **Message Repository** | Chat message storage | `app/database/repositories/message_repository.py` |
+
+---
+
+## How It Works
+
+### Conversation Flow
+
+The search flow is designed to be concise and natural:
+
+1. **Initial Request**: User states housing type (e.g., "عايز أوضة")
+2. **Location Clarification**: Bot asks for location if missing
+3. **Budget Inquiry**: Bot asks for budget if useful
+4. **Search Execution**: Bot searches and returns results
+5. **Refinement**: User can refine with follow-ups
+
+### Example Conversation
+
+```
 User: عايز أوضة
 Bot: تمام، تحب تدور فين؟
 
@@ -35,82 +115,71 @@ User: تحت 5000
 Bot: لقيت 2 أوضة في Maadi.
 ```
 
-## Architecture
+### NLP Strategy
 
-```text
-HTTP /chat
-  -> SearchService
-    -> NLPPipeline
-      -> TextNormalizer
-      -> NLP lexicon
-      -> rule-based intent/entity extraction
-      -> optional LLM fallback
-      -> FilterValidator
-    -> ConversationFlow
-    -> SearchExecutor
-      -> repositories
-      -> ResponseFormatter
-  -> ChatResponse JSON
-```
+The service uses a hybrid approach:
 
-Key modules:
+1. **Rule-Based Extraction** (Fast, deterministic)
+   - Text normalization and tokenization
+   - Intent and entity extraction using lexicons
+   - Filter validation and normalization
 
-| Area | File |
-| --- | --- |
-| API route | `app/api/routes.py` |
-| Main orchestration | `app/services/search_service.py` |
-| Search execution and pagination | `app/services/search_executor.py` |
-| Conversation state machine | `app/services/conversation_flow.py` |
-| NLP pipeline | `app/nlp/nlp_pipeline.py` |
-| NLP vocabulary | `app/nlp/lexicon.py` |
-| Location matching | `app/services/location_service.py` |
-| Response shaping | `app/formatters/response_formatter.py` |
-| Session memory | `app/core/session_context.py` |
-| Room search | `app/database/repositories/room_repository.py` |
-| Property search | `app/database/repositories/property_repository.py` |
+2. **LLM Fallback** (When confidence is low)
+   - Groq API for complex queries
+   - Structured extraction from unstructured input
+   - Fallback only when needed for cost efficiency
 
-## Supported Search Concepts
+---
+
+## Supported Features
 
 ### Housing Types
 
-- `room`
-- `property`
-- `full`
-- `shared`
+- **Room** - Individual rooms in shared apartments
+- **Property** - Full apartments
+- **Full** - Complete apartments
+- **Shared** - Shared apartment options
 
-### Filters
+### Search Filters
 
-- city / governorate
-- minimum and maximum monthly price
-- tenant type: student / worker
-- furnished
-- wifi
-- balcony
-- air conditioning
-- private bathroom
-- gender
-- shared room
-- sort order: relevance / lowest price / highest price
+| Filter | Type | Description |
+|--------|------|-------------|
+| City / Governorate | Location | Geographic filtering |
+| Min Price | Numeric | Minimum monthly rent |
+| Max Price | Numeric | Maximum monthly rent |
+| Tenant Type | Enum | Student / Worker |
+| Furnished | Boolean | Furniture status |
+| WiFi | Boolean | Internet availability |
+| Balcony | Boolean | Balcony presence |
+| Air Conditioning | Boolean | AC availability |
+| Private Bathroom | Boolean | Private bath |
+| Gender | Enum | Gender preference |
+| Shared Room | Boolean | Room sharing |
+| Sort Order | Enum | Relevance / Lowest / Highest |
 
-### Follow-Up Examples
+### Follow-Up Commands
 
-| User message | Effect |
-| --- | --- |
-| `أرخص` | sort by lowest price |
-| `هات الأعلى سعراً` | sort by highest price |
-| `فيها واي فاي` | add wifi filter |
-| `مش عايز واي فاي` | set wifi to false |
-| `غير مفروشة` | set furnished to false |
-| `للطلاب` | tenant type = student |
-| `في اسكندرية بدل المعادي` | replace location while keeping prior filters |
-| `المزيد` | load next page |
-| `ارجع` | return to previous search |
+| Command | Effect |
+|---------|--------|
+| `أرخص` | Sort by lowest price |
+| `هات الأعلى سعراً` | Sort by highest price |
+| `فيها واي فاي` | Add WiFi filter |
+| `مش عايز واي فاي` | Set WiFi to false |
+| `غير مفروشة` | Set furnished to false |
+| `للطلاب` | Tenant type = student |
+| `في اسكندرية بدل المعادي` | Replace location, keep filters |
+| `المزيد` | Load next page |
+| `ارجع` | Return to previous search |
 
-## API
+---
 
-### `POST /chat`
+## API Documentation
 
-Request body:
+### POST /chat
+
+Process a user message and return a structured response.
+
+#### Request Body
 
 ```json
 {
@@ -119,7 +188,7 @@ Request body:
 }
 ```
 
-Response body:
+#### Response Body
 
 ```json
 {
@@ -183,158 +252,466 @@ Response body:
 }
 ```
 
-### Response Types
+#### Response Types
 
-| Type | Meaning |
-| --- | --- |
-| `clarification` | the bot needs one more slot such as location or price |
-| `results` | search results were found |
-| `no_results` | search completed but no matching listings were found |
-| `end_of_results` | user asked for more after the final page |
-| `small_talk` | greeting, thanks, or goodbye |
-| `faq` | answer from the local knowledge base |
-| `fallback` | unsupported or unrelated request |
+| Type | Description |
+|------|-------------|
+| `clarification` | Bot needs more information (location, price, etc.) |
+| `results` | Search completed with results |
+| `no_results` | Search completed but no matches found |
+| `end_of_results` | User requested more after final page |
+| `small_talk` | Greeting, thanks, or goodbye |
+| `faq` | Answer from knowledge base |
+| `fallback` | Unsupported or unrelated request |
 
-## Frontend Integration Notes
+---
 
-- Render `reply` as the assistant message.
-- Use `response_type` to choose the UI state.
-- Render `suggestions` as quick-reply chips or buttons.
-- Render `results` as cards; do not parse card data out of the reply text.
-- Use `pending_slot` to understand what the assistant is waiting for.
-- Use `pagination.has_more` to show or hide a `المزيد` action.
-- Keep the same `session_id` for the whole conversation so follow-ups continue to work.
+## Frontend Integration
 
-## Setup
+### Implementation Guidelines
 
-### Requirements
+1. **Message Display**: Render `reply` as the assistant message
+2. **State Management**: Use `response_type` to determine UI state
+3. **Quick Replies**: Render `suggestions` as chips or buttons
+4. **Result Cards**: Display `results` as structured cards (don't parse text)
+5. **Context Tracking**: Use `pending_slot` to understand what's needed
+6. **Pagination**: Show/hide "المزيد" based on `pagination.has_more`
+7. **Session Continuity**: Maintain `session_id` across conversation
 
-- Python 3.13+
-- SQL Server compatible with the configured schema
-- Groq API key for LLM fallback extraction
+### Example Integration
 
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-GROQ_API_KEY=your_key_here
-DB_HOST=localhost
-DB_PORT=1433
-DB_NAME=StayMatch
-DB_USER=sa
-DB_PASSWORD=your_password_here
+```javascript
+// Handle chat response
+async function handleChatResponse(response) {
+  // Display assistant message
+  displayMessage(response.reply);
+  
+  // Handle response type
+  switch (response.response_type) {
+    case 'results':
+      displayResults(response.results);
+      break;
+    case 'clarification':
+      highlightPendingSlot(response.pending_slot);
+      break;
+    // ... other cases
+  }
+  
+  // Show quick replies
+  if (response.suggestions) {
+    displaySuggestions(response.suggestions);
+  }
+  
+  // Handle pagination
+  if (response.pagination?.has_more) {
+    showLoadMoreButton();
+  }
+}
 ```
 
-Optional:
+---
 
-```env
-DEBUG_LOGS=1
+## Installation
+
+### Prerequisites
+
+- **Python**: 3.10 or higher
+- **Database**: SQL Server (for properties) or PostgreSQL (for chatbot)
+- **API Key**: Groq API key for LLM features
+
+### Step 1: Clone Repository
+
+```bash
+git clone https://github.com/your-org/staymatch-ai-service.git
+cd staymatch-ai-service
 ```
 
-`DEBUG_LOGS=1` enables verbose NLP traces. Leave it unset in normal development and production runs.
+### Step 2: Create Virtual Environment
 
-### Install Dependencies
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### Step 3: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Run Locally
+### Step 4: Configure Environment
 
-If your SQL Server container is already configured:
+Create a `.env` file in the project root:
+
+```env
+# Groq API
+GROQ_API_KEY=your_groq_api_key_here
+
+# Backend Database (Properties, Rooms) - SQL Server
+DB_HOST=localhost
+DB_PORT=1433
+DB_NAME=staymatch_backend_db
+DB_USER=sa
+DB_PASSWORD=your_password_here
+
+# Chatbot Database (Conversations, Messages) - PostgreSQL (Neon)
+DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+
+# Optional: Legacy SQL Server for chatbot (deprecated)
+CHATBOT_DB_HOST=localhost
+CHATBOT_DB_PORT=1433
+CHATBOT_DB_NAME=staymatch_chatbot_db
+CHATBOT_DB_USER=sa
+CHATBOT_DB_PASSWORD=your_password_here
+
+# Optional: Debug Mode
+DEBUG_LOGS=0
+```
+
+### Step 5: Initialize Database
+
+Run the schema scripts:
 
 ```bash
-docker start sqlserver
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# For PostgreSQL chatbot database
+psql -h host -U user -d database -f app/database/chatbot_schema.sql
 ```
 
-Open the API docs at:
+### Step 6: Run Development Server
 
-```text
-http://localhost:8000/docs
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Access API documentation at: `http://localhost:8000/docs`
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Yes | Groq API key for LLM features |
+| `DB_HOST` | Yes | SQL Server host for properties |
+| `DB_PORT` | Yes | SQL Server port |
+| `DB_NAME` | Yes | SQL Server database name |
+| `DB_USER` | Yes | SQL Server username |
+| `DB_PASSWORD` | Yes | SQL Server password |
+| `DATABASE_URL` | No | PostgreSQL URL for chatbot (recommended) |
+| `CHATBOT_DB_*` | No | Legacy SQL Server for chatbot (deprecated) |
+| `DEBUG_LOGS` | No | Enable verbose NLP traces (0 or 1) |
+
+### Database Configuration
+
+#### Backend Database (SQL Server)
+
+Stores property and room listings. Schema defined in the main database.
+
+#### Chatbot Database (PostgreSQL - Neon)
+
+Stores conversations, messages, user preferences, search history, and analytics.
+
+**Recommended**: Use Neon PostgreSQL for serverless, scalable chatbot storage.
+
+**Legacy**: SQL Server support maintained for backward compatibility.
+
+---
+
+## Development
+
+### Project Structure
+
+```
+staymatch-ai-service/
+├── app/
+│   ├── api/              # API routes
+│   ├── core/             # Configuration and utilities
+│   ├── database/         # Database connections and repositories
+│   ├── data/             # Static data files
+│   ├── extractors/       # NLP extractors
+│   ├── formatters/       # Response formatters
+│   ├── models/           # Data models
+│   ├── nlp/              # NLP pipeline and lexicons
+│   ├── prompts/          # LLM prompts
+│   ├── rag/              # Retrieval-augmented generation
+│   ├── ranking/          # Result ranking
+│   ├── services/         # Business logic
+│   ├── utils/            # Utility functions
+│   └── main.py           # Application entry point
+├── tests/                # Test suite
+├── requirements.txt      # Python dependencies
+├── .env.example         # Environment template
+├── Dockerfile           # Container configuration
+└── README.md            # This file
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m unittest discover -s tests -v
+
+# Run specific test file
+python -m unittest tests.test_nlp_pipeline -v
+
+# Run with coverage
+pip install pytest-cov
+pytest --cov=app tests/
+```
+
+### Code Quality
+
+```bash
+# Compile check
+python -m compileall app tests
+
+# Type checking (if using mypy)
+pip install mypy
+mypy app/
+```
+
+---
 
 ## Testing
 
-Run the automated suite:
+### Automated Test Coverage
 
-```bash
-python -m unittest discover -s tests -v
+The test suite covers:
+
+- ✅ Room and apartment searches
+- ✅ PDF regression scenarios
+- ✅ Typo-tolerant location matching
+- ✅ Price filters and sort orders
+- ✅ Amenities and negated amenities
+- ✅ Room vs shared apartment distinction
+- ✅ Follow-up memory behavior
+- ✅ Skip answers (`أي مكان`, `أي سعر`)
+- ✅ Pagination and `المزيد`
+- ✅ Back navigation
+- ✅ No-results responses
+- ✅ FAQ, small talk, and invalid requests
+- ✅ Frontend response shape
+- ✅ PostgreSQL database operations
+
+### Manual Smoke Test
+
+Test these scenarios with a working database:
+
 ```
-
-The test suite currently covers:
-
-- room and apartment searches
-- PDF regression scenarios
-- typo-tolerant location matching
-- price filters and sort orders
-- amenities and negated amenities
-- room vs shared apartment distinction
-- follow-up memory behavior
-- skip answers such as `أي مكان` and `أي سعر`
-- pagination and `المزيد`
-- back navigation
-- no-results responses
-- FAQ, small talk, and invalid requests
-- frontend response shape
-
-Compile-check the project:
-
-```bash
-python -m compileall app tests
-```
-
-## Live Smoke Test
-
-With a working database connection, these scenarios are useful for a quick manual verification:
-
-```text
 عايز اوضة في المعادي تحت 5000
 فيها واي فاي
 
 عايز شقة كاملة في المعادي تحت 10000
 
-عايز اوضة في االسمعيلية
+عايز اوضة في السمعيلية
 ```
 
-Expected behavior:
+**Expected behavior**:
+- Valid searches → `results` response
+- Empty searches → `no_results` response
+- Incomplete searches → `clarification` response
+- Typos → Still resolve correctly
 
-- valid room searches return `results`
-- valid empty searches return `no_results`
-- incomplete searches return `clarification`
-- typo-tolerant locations still resolve correctly
+---
+
+## Deployment
+
+### Docker Deployment
+
+```bash
+# Build image
+docker build -t staymatch-ai-service .
+
+# Run container
+docker run -p 8000:8000 \
+  --env-file .env \
+  staymatch-ai-service
+```
+
+### Platform-Specific Deployment
+
+The repository includes configuration for:
+
+- **Render**: `render.yaml`
+- **Railway**: `railway.toml`
+- **Nixpacks**: `nixpacks.toml`
+- **Heroku**: `runtime.txt`
+
+### Pre-Deployment Checklist
+
+- [ ] All environment variables configured
+- [ ] Database accessible from deployment environment
+- [ ] SSL/TLS enabled for database connections
+- [ ] Debug logs disabled in production
+- [ ] Frontend uses structured response fields
+- [ ] API rate limiting configured
+- [ ] Monitoring and logging set up
+- [ ] Backup strategy in place
+
+### Performance Considerations
+
+- Use connection pooling for database connections
+- Enable caching for frequently accessed data
+- Monitor LLM API usage and costs
+- Implement rate limiting for API endpoints
+- Use CDN for static assets if applicable
+
+---
+
+## Database Migration
+
+### SQL Server to PostgreSQL Migration
+
+The chatbot database layer has been migrated from SQL Server to PostgreSQL (Neon).
+
+**Key Changes**:
+- Removed SQL Server dependencies (pyodbc, pymssql, FreeTDS)
+- Added PostgreSQL support (psycopg)
+- Updated schema for PostgreSQL compatibility
+- Maintained backward compatibility with legacy variables
+
+**Migration Guide**: See `POSTGRESQL_MIGRATION_GUIDE.md` for detailed instructions.
+
+**Benefits**:
+- Serverless architecture with Neon
+- Better performance and scalability
+- Simplified deployment (no ODBC dependencies)
+- Automatic backups and point-in-time recovery
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Application won't start
+
+**Error**: `ValidationError: database_url Input should be a valid string`
+
+**Solution**: Set `DATABASE_URL` environment variable or use legacy `CHATBOT_DB_*` variables.
+
+#### Database connection failed
+
+**Error**: `Could not connect to database`
+
+**Solution**:
+- Verify database is running
+- Check connection string format
+- Ensure firewall allows connection
+- Verify SSL settings for PostgreSQL
+
+#### LLM fallback not working
+
+**Error**: `Groq API error`
+
+**Solution**:
+- Verify `GROQ_API_KEY` is set
+- Check API key is valid
+- Ensure network allows API access
+- Monitor API quota limits
+
+#### Location matching fails
+
+**Issue**: Typos not resolved
+
+**Solution**:
+- Check `app/data/locations.json` is present
+- Verify location data is complete
+- Enable debug logs to see matching process
+
+### Debug Mode
+
+Enable verbose logging:
+
+```env
+DEBUG_LOGS=1
+```
+
+This will show detailed NLP traces for troubleshooting.
+
+---
 
 ## Data Files
 
 | File | Purpose |
-| --- | --- |
-| `app/data/locations.json` | governorates, cities, and villages used for location detection |
-| `app/data/knowledge_base.json` | FAQ answers |
-| `Results.json` | database schema snapshot |
-| `Staymatch Chatbot Test Cases Arabic.pdf` | original manual chatbot scenarios |
+|------|---------|
+| `app/data/locations.json` | Egyptian governorates, cities, and villages |
+| `app/data/knowledge_base.json` | FAQ answers and knowledge base |
+| `Results.json` | Database schema snapshot |
+| `cities.json` | City reference data |
+| `governorates.json` | Governorate reference data |
 
-## Deployment Notes
+---
 
-The repository includes:
+## Known Limitations
 
-- `Dockerfile`
-- `render.yaml`
-- `nixpacks.toml`
-- `runtime.txt`
+- **Session Memory**: In-process memory only; service restart clears sessions
+- **LLM Dependency**: Fallback requires Groq API and external availability
+- **Database Dependency**: Results depend on current database contents
+- **Language Support**: Primarily Egyptian Arabic; limited English support
+- **Real-time Updates**: No real-time property listing updates
 
-Before deployment, confirm:
+---
 
-1. environment variables are configured
-2. SQL Server is reachable from the service
-3. frontend uses the structured response fields instead of parsing plain text
-4. debug logs are disabled unless actively investigating an issue
+## Security Considerations
 
-## Known Boundaries
+- Never commit `.env` files or API keys
+- Use environment variables for sensitive configuration
+- Enable SSL/TLS for all database connections
+- Implement rate limiting on API endpoints
+- Regularly rotate API keys and database credentials
+- Monitor for suspicious activity
+- Keep dependencies updated
 
-- Conversation memory is in-process memory only; restarting the service clears sessions.
-- The LLM fallback depends on the configured Groq API key and external availability.
-- Search results depend on the current database contents and approval flags.
+---
 
+## Contributing
 
+We welcome contributions! Please follow these guidelines:
 
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes**
+4. **Write tests**: Ensure test coverage is maintained
+5. **Run tests**: `python -m unittest discover -s tests -v`
+6. **Commit changes**: `git commit -m 'Add amazing feature'`
+7. **Push to branch**: `git push origin feature/amazing-feature`
+8. **Open a Pull Request**
+
+### Code Style
+
+- Follow PEP 8 guidelines
+- Use meaningful variable and function names
+- Add docstrings for new functions
+- Keep functions focused and concise
+- Write tests for new features
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## Support
+
+For questions, issues, or contributions:
+
+- 📧 Email: support@staymatch.com
+- 🐛 Issues: GitHub Issues
+- 📖 Documentation: See this README and migration guide
+
+---
+
+## Acknowledgments
+
+- Groq for LLM API services
+- Neon for PostgreSQL hosting
+- The open-source community for excellent tools and libraries
+
+---
+
+**Built with ❤️ for the Egyptian housing market**
