@@ -130,6 +130,26 @@ class ConversationRepository:
         except Exception as e:
             debug_log("CONVERSATION_ERROR", f"Failed to update conversation: {str(e)}")
 
+    def update_metadata(self, session_id: str, metadata: dict) -> bool:
+        """Store/update JSON metadata for a conversation (full session context)."""
+        try:
+            import json
+            meta_json = json.dumps(metadata)
+            with self.engine.connect() as conn:
+                conn.execute(
+                    text("""
+                        UPDATE conversations
+                        SET metadata = :metadata
+                        WHERE session_id = :session_id
+                    """),
+                    {"session_id": session_id, "metadata": meta_json},
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            debug_log("CONVERSATION_ERROR", f"Failed to update metadata: {e}")
+            return False
+
     def increment_message_count(self, session_id: str):
         """
         Increment message count for a conversation

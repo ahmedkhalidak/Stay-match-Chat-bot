@@ -13,6 +13,10 @@ FACILITY_TOKENS = {
     "تكييف": "مكيف",
     "مكيف": "مكيف",
     "ac": "مكيف",
+    "air_conditioning": "مكيف",
+    "airconditioning": "مكيف",
+    "aircon": "مكيف",
+    "cooling": "مكيف",
 
     # bathroom
     "حمام_خاص": "حمام_خاص",

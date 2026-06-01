@@ -1,113 +1,217 @@
 """
-MemoryStore — بيحتفظ بالـ session context لكل مستخدم في الميموري
-مع تخزين دايم في الداتابيز (conversations & messages)
-Thread-safe باستخدام Lock
+MemoryStore — consolidated single source of truth for session state.
+Fully async, with fire-and-forget database persistence.
 """
 
-from threading import Lock
+import asyncio
+import json
+from typing import Optional
+
 from app.core.session_context import SessionContext
 from app.utils.logger import debug_log
+from app.utils.language_detector import detect_language
 
 
 class MemoryStore:
 
     def __init__(self):
         self._store: dict[str, SessionContext] = {}
-        self._lock = Lock()
+        self._lock = asyncio.Lock()
         self.use_database = False
         self.conversation_repo = None
         self.message_repo = None
-        
-        # Try to initialize database repositories
+        self.search_history_repo = None
+        self.preferences_repo = None
+        self.analytics_repo = None
+
         try:
             from app.database.repositories.conversation_repository import ConversationRepository
             from app.database.repositories.message_repository import MessageRepository
+            from app.database.repositories.search_history_repository import SearchHistoryRepository
+            from app.database.repositories.user_preferences_repository import UserPreferencesRepository
+            from app.database.repositories.session_analytics_repository import SessionAnalyticsRepository
             self.conversation_repo = ConversationRepository()
             self.message_repo = MessageRepository()
+            self.search_history_repo = SearchHistoryRepository()
+            self.preferences_repo = UserPreferencesRepository()
+            self.analytics_repo = SessionAnalyticsRepository()
             self.use_database = True
-            debug_log("MEMORY_INIT", "Database storage enabled")
         except Exception as e:
-            debug_log("MEMORY_INIT", f"Database storage disabled (fallback to memory only): {str(e)}")
-            self.use_database = False
+            debug_log("MEMORY_INIT", f"Database disabled: {e}")
 
-    def get_context(self, session_id: str) -> SessionContext:
-        with self._lock:
-            # Check if in memory
-            if session_id not in self._store:
-                if self.use_database:
-                    # Try to load from database
-                    try:
-                        conversation = self.conversation_repo.get_conversation_by_session(session_id)
-                        if conversation:
-                            # Load messages from database
-                            messages = self.message_repo.get_session_messages(session_id)
-                            ctx = SessionContext()
-                            for msg in messages:
-                                ctx.add_message(msg['role'], msg['content'])
+    async def get_context(self, session_id: str, message: str = "") -> SessionContext:
+        async with self._lock:
+            if session_id in self._store:
+                ctx = self._store[session_id]
+                if message and not ctx.language:
+                    ctx.language = detect_language(message)
+                return ctx
+
+            # Not in memory — try to reconstruct from DB
+            if self.use_database:
+                try:
+                    conversation = self.conversation_repo.get_conversation_by_session(session_id)
+                    if conversation:
+                        ctx = self._reconstruct_context(conversation, session_id)
+                        if ctx:
                             self._store[session_id] = ctx
-                            debug_log("MEMORY_LOAD", f"Loaded conversation {conversation['id']} from database")
                             return self._store[session_id]
-                    except Exception as e:
-                        debug_log("MEMORY_ERROR", f"Failed to load from database: {str(e)}")
-                
-                # Create new session in memory (and database if enabled)
-                self._store[session_id] = SessionContext()
-                if self.use_database:
-                    try:
-                        conv_id = self.conversation_repo.create_conversation(session_id)
-                        debug_log("MEMORY_CREATE", f"Created new conversation {conv_id} in database")
-                    except Exception as e:
-                        debug_log("MEMORY_ERROR", f"Failed to create in database: {str(e)}")
-            
-            return self._store[session_id]
+                except Exception:
+                    pass
 
-    def update_context(self, session_id: str, context: SessionContext):
-        with self._lock:
+            # Fresh session: create in memory, fire-and-forget DB write
+            lang = detect_language(message) if message else "ar"
+            ctx = SessionContext(language=lang)
+            self._store[session_id] = ctx
+            if self.use_database:
+                self._create_db_session(session_id, lang)
+            return ctx
+
+    def _reconstruct_context(self, conversation: dict, session_id: str) -> Optional[SessionContext]:
+        meta_str = conversation.get("metadata")
+        ctx = SessionContext()
+
+        if meta_str:
+            try:
+                meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+                ctx.language = meta.get("language", "ar")
+                ctx.pending_slot = meta.get("pending_slot")
+                ctx.current_offset = meta.get("current_offset", 0)
+                ctx.page_size = meta.get("page_size", 5)
+                ctx.use_cursor_pagination = meta.get("use_cursor_pagination", False)
+                ctx.last_clarification = meta.get("last_clarification")
+                ctx.no_results_count = meta.get("no_results_count", 0)
+                ctx.total_searches = meta.get("total_searches", 0)
+                ctx.skipped_slots = set(meta.get("skipped_slots", []))
+
+                if meta.get("last_search"):
+                    from app.models.search_models import SearchFilters
+                    ctx.last_search = SearchFilters(**meta["last_search"])
+
+                if meta.get("user_preferences"):
+                    from app.core.session_context import UserPreferences
+                    ctx.user_preferences = UserPreferences(**meta["user_preferences"])
+            except Exception:
+                pass
+
+        try:
+            msgs = self.message_repo.get_session_messages(session_id)
+            for msg in msgs:
+                ctx.add_message(msg["role"], msg["content"])
+        except Exception:
+            pass
+
+        return ctx
+
+    def _create_db_session(self, session_id: str, language: str):
+        try:
+            meta = json.dumps({"language": language})
+            self.conversation_repo.create_conversation(session_id=session_id, metadata=meta)
+            self.analytics_repo.create_session(session_id)
+        except Exception:
+            pass
+
+    async def update_context(self, session_id: str, context: SessionContext):
+        async with self._lock:
             self._store[session_id] = context
-            # Update last activity in database
-            if self.use_database:
-                try:
-                    self.conversation_repo.update_last_activity(session_id, len(context.conversation_history))
-                except Exception as e:
-                    debug_log("MEMORY_ERROR", f"Failed to update database: {str(e)}")
 
-    def clear_context(self, session_id: str):
-        """امسح السيشن — مفيد للـ testing أو reset"""
-        with self._lock:
-            self._store.pop(session_id, None)
-            # Also delete from database
-            if self.use_database:
-                try:
-                    self.conversation_repo.delete_conversation(session_id)
-                    debug_log("MEMORY_CLEAR", f"Cleared session {session_id} from memory and database")
-                except Exception as e:
-                    debug_log("MEMORY_ERROR", f"Failed to delete from database: {str(e)}")
+    def _sync_to_db(self, session_id: str, context: SessionContext):
+        """Fire-and-forget DB sync — doesn't block the response."""
+        if not self.use_database:
+            return
+        try:
+            meta = self._serialize_context(context)
+            self.conversation_repo.update_metadata(session_id, meta)
+            self.conversation_repo.update_last_activity(session_id, len(context.conversation_history))
+        except Exception:
+            pass
 
-    def active_sessions(self) -> int:
-        """عدد السيشنز النشطة — للـ monitoring"""
-        with self._lock:
-            return len(self._store)
+    def _serialize_context(self, context: SessionContext) -> dict:
+        return {
+            "language": context.language,
+            "pending_slot": context.pending_slot,
+            "current_offset": context.current_offset,
+            "page_size": context.page_size,
+            "use_cursor_pagination": context.use_cursor_pagination,
+            "last_clarification": context.last_clarification,
+            "no_results_count": context.no_results_count,
+            "total_searches": context.total_searches,
+            "skipped_slots": list(context.skipped_slots),
+            "last_search": context.last_search.model_dump() if context.last_search else None,
+            "user_preferences": context.user_preferences.model_dump() if context.user_preferences else None,
+        }
 
-    def add_message(self, session_id: str, role: str, content: str):
-        """تسجيل رسالة في السيشن مع تخزين في الداتابيز"""
-        ctx = self.get_context(session_id)
-        ctx.add_message(role, content)
-        self.update_context(session_id, ctx)
-        
-        # Store message in database
+    async def store_message(self, session_id: str, role: str, content: str, context: SessionContext):
+        context.add_message(role, content)
+        await self.update_context(session_id, context)
+
         if self.use_database:
             try:
                 conversation = self.conversation_repo.get_conversation_by_session(session_id)
                 if conversation:
                     self.message_repo.add_message(
-                        conversation_id=conversation['id'],
-                        role=role,
-                        content=content
+                        conversation_id=conversation["id"], role=role, content=content,
                     )
                     self.conversation_repo.increment_message_count(session_id)
-                    debug_log("MEMORY_STORE", f"Stored message in database for session {session_id}")
-            except Exception as e:
-                debug_log("MEMORY_ERROR", f"Failed to store in database: {str(e)}")
+                    self.analytics_repo.increment_messages(session_id)
+            except Exception:
+                pass
+
+    async def store_messages_batch(self, session_id: str, turns: list, context: SessionContext):
+        """Store multiple message turns in a single DB call pattern."""
+        for role, content in turns:
+            context.add_message(role, content)
+        await self.update_context(session_id, context)
+
+        if self.use_database:
+            try:
+                conversation = self.conversation_repo.get_conversation_by_session(session_id)
+                if conversation:
+                    conv_id = conversation["id"]
+                    for role, content in turns:
+                        self.message_repo.add_message(conversation_id=conv_id, role=role, content=content)
+                        self.conversation_repo.increment_message_count(session_id)
+                        self.analytics_repo.increment_messages(session_id)
+            except Exception:
+                pass
+
+    async def record_search(self, session_id: str, context: SessionContext, search_type: str, results_count: int, filters: dict):
+        if self.use_database:
+            try:
+                self.search_history_repo.add_entry(
+                    session_id=session_id, search_type=search_type, results_count=results_count,
+                    city=filters.get("city"), governorate=filters.get("governorate"),
+                    min_price=filters.get("min_price"), max_price=filters.get("max_price"), filters=filters,
+                )
+                self.analytics_repo.increment_searches(session_id)
+                if results_count == 0:
+                    self.analytics_repo.increment_no_results(session_id)
+            except Exception:
+                pass
+
+    async def clear_context(self, session_id: str):
+        async with self._lock:
+            self._store.pop(session_id, None)
+            if self.use_database:
+                try:
+                    self.analytics_repo.end_session(session_id)
+                    self.conversation_repo.delete_conversation(session_id)
+                except Exception:
+                    pass
+
+    async def active_sessions(self) -> int:
+        async with self._lock:
+            return len(self._store)
+
+    def get_context_sync(self, session_id: str, message: str = "") -> SessionContext:
+        if session_id not in self._store:
+            lang = detect_language(message) if message else "ar"
+            self._store[session_id] = SessionContext(language=lang)
+        else:
+            ctx = self._store[session_id]
+            if message and not ctx.language:
+                ctx.language = detect_language(message)
+        return self._store[session_id]
 
 
 memory_store = MemoryStore()

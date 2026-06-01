@@ -1,8 +1,3 @@
-"""
-Search execution and response assembly.
-Keeps repository access, pagination, and result formatting out of orchestration.
-"""
-
 import hashlib
 import json
 
@@ -14,6 +9,7 @@ from app.models.response_models import ChatResponse, PaginationMeta
 from app.models.search_models import SearchFilters
 from app.services.conversation_flow import ConversationFlow
 from app.utils.logger import debug_log
+from app.utils.bilingual_responses import t
 
 
 class SearchExecutor:
@@ -29,133 +25,87 @@ class SearchExecutor:
         self.formatter = formatter or ResponseFormatter()
         self.flow = flow or ConversationFlow()
 
-    def execute(
-        self,
-        filters: SearchFilters,
-        context: SessionContext,
-    ) -> ChatResponse:
-        debug_log("SEARCH_EXECUTOR", f"Executing search - type: {filters.search_type}, city: {filters.city}, governorate: {filters.governorate}")
+    def execute(self, filters: SearchFilters, context: SessionContext) -> ChatResponse:
+        lang = context.language
         cache_key = self._filters_hash(filters)
-        
-        # Use cursor-based pagination if enabled
-        use_cursor = context.use_cursor_pagination
-        cursor = context.last_cursor if use_cursor else None
-        offset = context.current_offset if not use_cursor else 0
+
+        offset = context.current_offset
         limit = context.page_size
+        # Query limit+1 to detect has_more without a second query
+        detect_limit = limit + 1
         page_num = (offset // limit) + 1
-        debug_log("SEARCH_EXECUTOR_OFFSET", f"Using offset: {offset}, page_num: {page_num}, cursor_pagination: {use_cursor}")
 
         if filters.search_type == "room":
-            if use_cursor:
-                debug_log("SEARCH", f"room cursor={cursor} limit={limit}")
-                page_results, next_cursor, has_more = self.room_repo.search_with_cursor(filters, cursor, limit)
-            else:
-                debug_log("SEARCH", f"room offset={offset} limit={limit}")
-                page_results = self.room_repo.search(filters, offset=offset, limit=limit)
-                next_page = self.room_repo.search(filters, offset=offset + limit, limit=1)
-                has_more = len(next_page) > 0
-                next_cursor = None
+            page_results = self.room_repo.search(filters, offset=offset, limit=detect_limit)
         elif filters.search_type in ("property", "full", "shared"):
-            if use_cursor:
-                debug_log("SEARCH", f"{filters.search_type} cursor={cursor} limit={limit}")
-                page_results, next_cursor, has_more = self.property_repo.search_with_cursor(filters, cursor, limit)
-            else:
-                debug_log("SEARCH", f"{filters.search_type} offset={offset} limit={limit}")
-                page_results = self.property_repo.search(filters, offset=offset, limit=limit)
-                next_page = self.property_repo.search(filters, offset=offset + limit, limit=1)
-                has_more = len(next_page) > 0
-                next_cursor = None
+            page_results = self.property_repo.search(filters, offset=offset, limit=detect_limit)
         else:
             return ChatResponse(
-                reply="ابدأ بتحديد إنك عايز أوضة ولا شقة.",
+                reply=t("SEARCH_TYPE_MISSING", lang),
                 response_type="clarification",
                 pending_slot="search_type",
                 filters=filters,
-                suggestions=self.flow.get_slot_suggestions("search_type"),
+                suggestions=self.flow.get_slot_suggestions("search_type", lang),
             )
+
+        has_more = len(page_results) > limit
+        results = page_results[:limit]
 
         context.cache_key = cache_key
-        if use_cursor:
-            context.update_cursor(next_cursor)
+        if offset == 0:
+            context.cached_results = list(results)
         else:
-            if offset == 0:
-                context.cached_results = list(page_results)
-            else:
-                context.cached_results.extend(list(page_results))
+            context.cached_results.extend(list(results))
 
-        if not page_results and (offset > 0 or cursor):
+        if not results and (offset > 0):
             return ChatResponse(
-                reply="دي كانت آخر النتائج المتاحة للبحث ده.",
+                reply=t("END_OF_RESULTS", lang),
                 response_type="end_of_results",
                 filters=filters,
-                pagination=PaginationMeta(
-                    page=page_num,
-                    page_size=limit,
-                    has_more=False,
-                ),
+                pagination=PaginationMeta(page=page_num, page_size=limit, has_more=False),
             )
 
-        if not page_results and offset == 0 and not cursor:
-            location_name = filters.city or filters.governorate or "المناطق المتاحة"
+        if not results and offset == 0:
+            location_name = filters.city or filters.governorate or ""
+            if not location_name:
+                location_name = "the available areas" if lang == "en" else "المناطق المتاحة"
             search_type_name = {
-                "room": "أوض",
-                "property": "شقق",
-                "full": "شقق كاملة",
-                "shared": "شقق مشتركة",
-            }.get(filters.search_type, "نتائج")
+                "room": "rooms" if lang == "en" else "أوض",
+                "property": "properties" if lang == "en" else "شقق",
+                "full": "apartments" if lang == "en" else "شقق كاملة",
+                "shared": "shared housing" if lang == "en" else "شقق مشتركة",
+            }.get(filters.search_type, "results" if lang == "en" else "نتائج")
             context.push_search(filters, 0)
             return ChatResponse(
-                reply=(
-                    f"مش لاقي {search_type_name} مناسبة في {location_name} حالياً.\n"
-                    "جرّب توسّع المكان أو تغيّر الميزانية."
-                ),
+                reply=t("NO_RESULTS", lang, type=search_type_name, location=location_name),
                 response_type="no_results",
                 filters=filters,
-                suggestions=self.flow.build_no_results_suggestions(filters),
-                pagination=PaginationMeta(
-                    page=page_num,
-                    page_size=limit,
-                    has_more=False,
-                ),
+                suggestions=self.flow.build_no_results_suggestions(filters, lang),
+                pagination=PaginationMeta(page=page_num, page_size=limit, has_more=False),
             )
 
-        # Get total count for housing_type clarification check
-        if offset == 0 and not cursor:
+        if offset == 0:
             if filters.search_type == "room":
                 total_count = self.room_repo.count(filters)
             else:
                 total_count = self.property_repo.count(filters)
             context.last_results_count = total_count
-            debug_log("SEARCH_EXECUTOR_COUNT", f"Total results: {total_count}")
         else:
-            context.last_results_count = len(page_results)
-        
-        # Mark seen IDs on every page to prevent duplicates (not just first page)
-        ids = [row.get("Id") for row in page_results if row.get("Id")]
+            context.last_results_count = len(results)
+
+        ids = [row.get("Id") for row in results if row.get("Id")]
         if filters.search_type == "room":
             context.mark_seen(room_ids=ids)
-            debug_log("SEARCH_EXECUTOR_SEEN", f"Marked {len(ids)} room IDs as seen, total seen: {len(context.seen_room_ids)}")
         else:
             context.mark_seen(property_ids=ids)
-            debug_log("SEARCH_EXECUTOR_SEEN", f"Marked {len(ids)} property IDs as seen, total seen: {len(context.seen_property_ids)}")
-        
-        if offset == 0 and not cursor:
-            context.push_search(filters, len(page_results))
+
+        if offset == 0:
+            context.push_search(filters, len(results))
 
         if filters.search_type == "room":
-            reply, cards = self.formatter.format_rooms(
-                page_results,
-                filters,
-                has_more=has_more,
-                page_num=page_num,
-            )
+            reply, cards = self.formatter.format_rooms(results, filters, has_more=has_more, page_num=page_num)
         else:
-            reply, cards = self.formatter.format_properties(
-                page_results,
-                filters,
-                has_more=has_more,
-                page_num=page_num,
-            )
+            reply, cards = self.formatter.format_properties(results, filters, has_more=has_more, page_num=page_num)
 
         return ChatResponse(
             reply=reply,
@@ -163,11 +113,7 @@ class SearchExecutor:
             filters=filters,
             suggestions=self.flow.build_result_suggestions(context, filters, has_more),
             results=cards,
-            pagination=PaginationMeta(
-                page=page_num,
-                page_size=limit,
-                has_more=has_more,
-            ),
+            pagination=PaginationMeta(page=page_num, page_size=limit, has_more=has_more),
         )
 
     def _filters_hash(self, filters: SearchFilters) -> str:

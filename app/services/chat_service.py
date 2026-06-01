@@ -1,159 +1,42 @@
 import random
-import re
+
+from app.utils.bilingual_responses import t
+from app.utils.language_detector import detect_language
 
 
 class ChatService:
 
-    def normalize(
-        self,
-        text: str,
-    ):
-
-        text = (
-            text
-            .lower()
-            .strip()
-        )
-
-        text = (
-            text
-            .replace("أ", "ا")
-            .replace("إ", "ا")
-            .replace("آ", "ا")
-            .replace("ة", "ه")
-            .replace("ى", "ي")
-        )
-
-        text = re.sub(
-            r"([^\d])\1{2,}",
-            r"\1",
-            text
-        )
-
-        return text
-
-    def generate_reply(
-        self,
-        message: str,
-    ):
-
-        text = self.normalize(
-            message
-        )
-
-        # Greetings
+    def generate_reply(self, message: str, lang: str = "ar") -> str:
+        text = message.lower().strip()
 
         greeting_words = [
-
-            "عامل",
-            "اخبارك",
-            "ازيك",
-            "عامل اي",
-            "عامل ايه",
-            "اهلا",
-            "هاي",
-            "هلو",
+            "عامل", "اخبارك", "ازيك", "عامل اي", "عامل ايه", "اهلا", "هاي", "هلو",
+            "hello", "hi", "hey", "good morning", "good evening",
+            "how are you", "how's it going", "morning", "evening",
+            "مرحبا", "السلام عليكم",
         ]
-
-        if any(
-            word in text
-            for word in greeting_words
-        ):
-
-            replies = [
-
-                "الحمدلله 😄 وانت؟",
-
-                "زي الفل   😎",
-
-                "كله تمام 😄",
-
-                "الدنيا ماشية الحمدلله 🙌",
-
-                "تمام 😎",
-            ]
-
-            return random.choice(
-                replies
-            )
-
-        # Thanks
-
         thanks_words = [
-
-            "شكرا",
-
-            "شكر",
-
-            "ميرسي",
-
-            "مرسي",
-
-            "ثانكس",
-
-            "متشكر",
-
-            "متشكرين",
-
-            "تسلم",
-
-            "تسلملي",
-
-            "حبيبي",
-            "thanks",
-            "thx",
-            "شكراااا",
+            "شكرا", "شكر", "ميرسي", "مرسي", "ثانكس", "متشكر",
+            "متشكرين", "تسلم", "تسلملي", "حبيبي", "شكراااا",
+            "thanks", "thank you", "thx", "thank u", "thanks a lot",
+            "appreciate it", "much appreciated",
         ]
-
-        if any(
-            word in text
-            for word in thanks_words
-        ):
-
-            replies = [
-
-                "العفو يا نجم 😄",
-
-                "تحت أمرك ❤️",
-
-                "أي وقت 🙌",
-
-                "حبيبي 😄",
-            ]
-
-            return random.choice(
-                replies
-            )
-
-        # Bye
-
         bye_words = [
-
-            "سلام",
-
-            "باي",
-
-            "اشوفك",
-
-            "مع السلامه",
+            "سلام", "باي", "اشوفك", "مع السلامه", "مع السلامة",
+            "bye", "goodbye", "see you", "see ya", "later",
+            "مع_السلامه",
         ]
 
-        if any(
-            word in text
-            for word in bye_words
-        ):
+        for word in greeting_words:
+            if word in text:
+                return random.choice(t("GREETING_REPLIES", lang))
 
-            replies = [
+        for word in thanks_words:
+            if word in text:
+                return random.choice(t("THANKS_REPLIES", lang))
 
-                "مع السلامه يا نجم 😄",
-
-                "اشوفك قريب 🙌",
-
-                "نورت StayMatch 😎",
-            ]
-
-            return random.choice(
-                replies
-            )
+        for word in bye_words:
+            if word in text:
+                return random.choice(t("BYE_REPLIES", lang))
 
         return "😄"

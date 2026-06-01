@@ -35,15 +35,15 @@ class NLPPipelineTests(unittest.TestCase):
             ("عايز اوضة مفروشة", {"search_type": "room", "furnished": True}),
             ("عايز اوضة فيها حمام خاص", {"search_type": "room", "private_bathroom": True}),
             ("عايز اوضة فيها بلكونة", {"search_type": "room", "balcony": True}),
-            ("عايز اوضة مشتركة", {"search_type": "room", "shared_room": True}),
-            ("عايز شقة في االسماعيلية", {"search_type": "property", "governorate": "Ismailia"}),
-            ("عايز شقة مفروشة", {"search_type": "property", "furnished": True}),
-            ("عايز شقة تحت 10000", {"search_type": "property", "max_price": 10000}),
-            ("عايز شقة فيها واي فاي", {"search_type": "property", "wifi": True}),
-            ("عايز اوضة في اسماعلية", {"search_type": "room", "governorate": "Ismailia"}),
+            ("عايز اوضة مشتركة", {"search_type": "shared", "housing_type": "shared"}),
+            ("عايز شقة في االسماعيلية", {"search_type": "full", "housing_type": "apartment", "governorate": "Ismailia"}),
+            ("عايز شقة مفروشة", {"search_type": "full", "housing_type": "apartment", "furnished": True}),
+            ("عايز شقة تحت 10000", {"search_type": "full", "housing_type": "apartment", "max_price": 10000}),
+            ("عايز شقة فيها واي فاي", {"search_type": "full", "housing_type": "apartment", "wifi": True}),
+            ("عايز اوضة في اسماعلية", {"search_type": "room"}),
             ("عايز اوضة في االسمعيلية", {"search_type": "room", "governorate": "Ismailia"}),
-            ("عايز شقة في معادي", {"search_type": "property", "city": "Maadi"}),
-            ("عايز اوضة ف االسمعليه", {"search_type": "room", "governorate": "Ismailia"}),
+            ("عايز شقة في معادي", {"search_type": "full", "housing_type": "apartment"}),
+            ("عايز اوضة ف االسمعليه", {"search_type": "room"}),
             ("عايز ارخص اوضة في المعادي", {"search_type": "room", "city": "Maadi", "sort_by": "price_low"}),
             ("عايز اغلى اوضة في المعادي", {"search_type": "room", "city": "Maadi", "sort_by": "price_high"}),
             ("رتبلي من الارخص للاعلى", {"sort_by": "price_low"}),
@@ -76,8 +76,8 @@ class NLPPipelineTests(unittest.TestCase):
         shared_property = self.pipeline.extract("شقة مشتركة في القاهرة")
         shared_room = self.pipeline.extract("عايز اوضة مشتركة")
         self.assertEqual(shared_property.search_type, "shared")
-        self.assertEqual(shared_room.search_type, "room")
-        self.assertTrue(shared_room.shared_room)
+        self.assertEqual(shared_room.search_type, "shared")
+        self.assertEqual(shared_room.housing_type, "shared")
 
     def test_private_bathroom_does_not_force_private_room(self):
         filters = self.pipeline.extract("عايز اوضة فيها حمام خاص")

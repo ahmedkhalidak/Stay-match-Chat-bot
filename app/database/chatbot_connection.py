@@ -24,7 +24,7 @@ def get_chatbot_engine():
             pool_pre_ping=True,
             pool_size=5,
             max_overflow=10,
-            echo=True
+            echo=False
         )
         
         # Log chatbot database connection

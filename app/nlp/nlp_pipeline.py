@@ -85,7 +85,13 @@ class NLPPipeline:
         if pending_slot:
             self._handle_slot_reply(parsed, pending_slot)
 
-        self._promote_entity_only_messages(parsed, last_search, pending_slot)
+        has_inherited_location = (
+            last_search is not None
+            and parsed.location is not None
+            and parsed.location_confidence > 0
+            and not self._has_explicit_location(parsed.raw_text)
+        )
+        self._promote_entity_only_messages(parsed, last_search, pending_slot, has_inherited_location)
 
         parsed.calculate_overall_confidence()
         debug_log("CONFIDENCE", parsed.overall_confidence)
@@ -446,11 +452,17 @@ class NLPPipeline:
         if parsed.intent == "property_search":
             parsed.search_type = "property"
 
+    @staticmethod
+    def _has_explicit_location(text: str) -> bool:
+        loc_service = LocationService()
+        return loc_service.detect_location(text) is not None
+
     def _promote_entity_only_messages(
         self,
         parsed: ParsedMessage,
         last_search: SearchFilters | None,
         pending_slot: str | None,
+        has_inherited_location: bool = False,
     ):
         if pending_slot:
             parsed.intent = "clarification"
@@ -461,6 +473,18 @@ class NLPPipeline:
             return
 
         if parsed.location:
+            # If location is inherited AND we have other entities, it's a follow-up
+            if has_inherited_location and (
+                parsed.price
+                or parsed.amenities
+                or parsed.tenant_type
+                or parsed.gender
+                or parsed.shared_room is not None
+                or parsed.sort_by
+            ):
+                parsed.intent = "follow_up"
+                parsed.intent_confidence = 0.85
+                return
             parsed.intent = "follow_up" if " بدل " in f" {parsed.normalized_text} " else "clarification"
             parsed.intent_confidence = 0.85
             return

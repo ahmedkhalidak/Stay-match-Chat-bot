@@ -1,180 +1,169 @@
 """
 Static NLP vocabulary used by the rule-based pipeline.
-Keeping it separate from the pipeline makes behavior easier to inspect and extend.
+Comprehensive bilingual support (Arabic + English).
 """
 
 INTENT_KEYWORDS = {
     "room_search": [
-        "غرفه", "room", "bedroom", "studio", "سنجل", "single",
-        "اوضة", "اوضه", "غرفة", "خاص", "private", "فردي",
+        "غرفه", "غرفة", "غرف", "اوضة", "اوضه",
+        "room", "rooms", "bedroom", "studio",
+        "سنجل", "single", "خاص", "private", "فردي",
+        "private room", "single room",
     ],
     "property_search": [
-        "شقه", "apartment", "flat", "property", "house", "home",
+        "شقه", "شقة", "شقق", "سكن",
+        "apartment", "flat", "property", "house", "home",
         "villa", "منزل", "عقار", "وحده", "عماره", "مبني",
-        "شقة", "شقق", "سكن",
     ],
     "follow_up": [
-        "ارخص", "رخيص", "cheap", "اقل", "lower",
-        "اغلى", "غالي", "expensive", "اعلى", "higher",
+        "ارخص", "رخيص", "اقل", "cheap", "cheaper", "lower", "lowest",
+        "اغلى", "غالي", "expensive", "higher", "highest", "اعلى",
         "تحت", "فوق", "سعر", "price", "budget",
         "مفروش", "مكيف", "wifi", "واي", "انترنت",
         "بلكونه", "حمام", "مطبخ", "غساله", "ثلاجه",
         "قريب", "بعيد", "هادئ", "واسع", "نضيف",
         "بدل", "شيل", "غير", "مش عايز",
+        "furnished", "unfurnished", "ac", "internet",
+        "balcony", "bathroom", "kitchen", "washer", "fridge",
+        "near", "quiet", "spacious", "clean", "change",
     ],
     "show_more": [
-        "كمان", "المزيد", "تاني", "more", "next", "show",
-        "باقي", "بقية", "كمل", "continue",
+        "كمان", "المزيد", "تاني", "باقي", "بقية", "كمل",
+        "more", "next", "show more", "continue", "another",
+        "additional", "extra",
     ],
     "go_back": [
-        "ارجع", "اللي فات", "قبل", "back", "previous",
-        "رجوع", "السابق",
+        "ارجع", "اللي فات", "قبل", "رجوع", "السابق",
+        "back", "previous", "go back", "return",
     ],
     "small_talk": [
         "ازيك", "اخبارك", "عامل", "صباح", "مساء", "هاي", "هلو",
         "اهلا", "مرحبا", "شكرا", "ميرسي", "تسلم", "سلام", "باي",
+        "hello", "hi", "hey", "good morning", "good evening",
+        "thanks", "thank you", "bye", "goodbye", "see you",
+        "how are you", "how's it going",
     ],
     "faq": [
         "ازاي", "ايه", "مين", "هل", "عندك", "بتعمل", "فلوس",
         "دفع", "امان", "سعر", "رسوم", "تكلفة", "مصاريف",
+        "how", "what", "who", "do you", "how much", "cost",
+        "fee", "fees", "payment", "safe", "secure", "insurance",
+        "why", "when", "where", "tell me",
     ],
 }
 
 FULL_KEYWORDS = [
-    "كامله",
-    "كاملة",
-    "full",
-    "لوحدي",
-    "لنفسي",
-    "private apartment",
+    "كامله", "كاملة", "full",
+    "لوحدي", "لنفسي",
+    "private apartment", "entire apartment", "entire place",
 ]
 
 SHARED_KEYWORDS = [
-    "مشترك",
-    "shared",
-    "roommate",
-    "مع ناس",
-    "مع حد",
-    "سكن مشترك",
-    "شقه مشتركه",
-    "شقة مشتركة",
-    "shared apartment",
-    "shared flat",
+    "مشترك", "مشتركة", "مشتركه",
+    "shared", "roommate", "room mates",
+    "مع ناس", "مع حد", "سكن مشترك",
+    "شقه مشتركه", "شقة مشتركة",
+    "shared apartment", "shared flat",
+    "روم ميت", "شير", "مشاركة",
+    "co-living", "coliving",
 ]
 
 HOUSING_TYPE_KEYWORDS = {
     "apartment": [
-        "شقة", "شقه", "apartment", "flat", "كاملة", "كامله", "full",
-        "وحدة", "وحده", "عقار", "منزل", "house", "home", "villa",
+        "شقة", "شقه", "شقق",
+        "apartment", "flat", "apartments", "flats",
+        "كاملة", "كامله", "full",
+        "وحدة", "وحده", "عقار", "منزل",
+        "house", "home", "villa",
     ],
     "room": [
-        "اوضة", "اوضه", "غرفة", "غرفه", "غرف", "room", "rooms", "bedroom", "studio",
+        "اوضة", "اوضه", "غرفة", "غرفه", "غرف",
+        "room", "rooms", "bedroom", "studio",
         "سنجل", "single", "خاص", "private", "فردي", "لوحدي",
+        "private room", "single room",
     ],
     "shared": [
-        "مشترك", "shared", "roommate", "مع ناس", "مع حد", "سكن مشترك",
-        "شقه مشتركه", "شقة مشتركة", "shared apartment", "shared flat",
-        "روم ميت", "roommate", "شير", "مشاركة",
+        "مشترك", "مشتركة", "مشتركه",
+        "shared", "roommate", "roommates",
+        "مع ناس", "مع حد", "سكن مشترك",
+        "شقه مشتركه", "شقة مشتركة",
+        "shared apartment", "shared flat",
+        "روم ميت", "شير", "مشاركة",
+        "co-living", "coliving",
     ],
 }
 
 ANY_HOUSING_TYPE_PHRASES = {
-    "اعرض الكل",
-    "عرض الكل",
-    "كلهم",
-    "الكل",
-    "اي نوع",
-    "أي نوع",
+    "اعرض الكل", "عرض الكل", "كلهم", "الكل", "اي نوع", "أي نوع",
+    "show all", "all types", "everything", "any type", "all",
 }
 
 AMENITY_KEYWORDS = {
-    "wifi": ["wifi", "wi-fi", "واي", "انترنت", "نت"],
-    "furnished": ["مفروش", "furnished"],
-    "air_conditioning": ["مكيف", "تكييف", "ac"],
-    "balcony": ["بلكونه", "balcony"],
-    "private_bathroom": ["حمام_خاص", "private_bathroom", "ensuite"],
+    "wifi": ["wifi", "wi-fi", "واي", "انترنت", "نت", "internet", "net"],
+    "furnished": ["مفروش", "furnished", "furniture"],
+    "air_conditioning": ["مكيف", "تكييف", "ac", "air conditioning", "aircon", "cooling"],
+    "balcony": ["بلكونه", "balcony", "balconies", "terrace"],
+    "private_bathroom": ["حمام_خاص", "private_bathroom", "ensuite", "private bathroom", "en suite"],
     "kitchen": ["مطبخ", "kitchen"],
-    "washer": ["غساله", "washer"],
-    "refrigerator": ["ثلاجه", "fridge"],
+    "washer": ["غساله", "washer", "washing machine"],
+    "refrigerator": ["ثلاجه", "fridge", "refrigerator"],
 }
 
 TENANT_KEYWORDS = {
     "student": ["طلبه", "طلاب", "student", "students", "سكن_طلبه"],
-    "worker": ["موظف", "عامل", "worker", "موظفين", "employees"],
+    "worker": ["موظف", "عامل", "worker", "موظفين", "employees", "staff"],
 }
 
 GENDER_KEYWORDS = {
-    "male": ["شباب", "ولاد", "boys", "male", "رجاله", "رجالة"],
-    "female": ["بنات", "girls", "female", "سيدات", "ladies"],
+    "male": ["شباب", "ولاد", "boys", "male", "رجاله", "رجالة", "males"],
+    "female": ["بنات", "girls", "female", "سيدات", "ladies", "females"],
 }
 
 SORT_KEYWORDS = {
-    "price_low": ["ارخص", "الارخص", "رخيص", "cheap", "اقل", "lower", "سعر_منخفض"],
-    "price_high": ["اغلي", "الاغلي", "غالي", "expensive", "اعلي", "الاعلي", "higher", "سعر_مرتفع"],
+    "price_low": [
+        "ارخص", "الارخص", "رخيص", "اقل",
+        "cheap", "cheapest", "cheaper", "lower", "lowest",
+        "سعر_منخفض", "low price", "lowest price",
+    ],
+    "price_high": [
+        "اغلي", "الاغلي", "غالي", "اعلي",
+        "expensive", "most expensive", "higher", "highest",
+        "سعر_مرتفع", "high price", "highest price",
+    ],
 }
 
 ROOM_NOUNS = {
-    "غرفه",
-    "غرف",
-    "اوضه",
-    "اوضة",
-    "غرفة",
-    "room",
-    "rooms",
-    "bedroom",
-    "studio",
+    "غرفه", "غرف", "اوضه", "اوضة", "غرفة",
+    "room", "rooms", "bedroom", "studio",
 }
 
 PROPERTY_NOUNS = {
-    "شقه",
-    "شقة",
-    "شقق",
-    "apartment",
-    "flat",
-    "property",
-    "house",
-    "home",
+    "شقه", "شقة", "شقق",
+    "apartment", "flat", "property", "house", "home",
 }
 
 SEARCH_TYPE_BLOCKED_INTENTS = {
-    "small_talk",
-    "show_more",
-    "go_back",
+    "small_talk", "show_more", "go_back",
 }
 
 SLOT_REPLY_YES_WORDS = {
-    "اه",
-    "ايوه",
-    "نعم",
-    "ياريت",
-    "اكيد",
-    "ايوا",
+    "اه", "ايوه", "نعم", "ياريت", "اكيد", "ايوا",
+    "yes", "yeah", "sure", "ok", "okay", "please",
 }
 
 SLOT_REPLY_NO_WORDS = {
-    "لا",
-    "لأ",
-    "مش",
-    "بدون",
-    "شكرا",
+    "لا", "لأ", "مش", "بدون", "شكرا",
+    "no", "nah", "without", "no thanks", "don't",
 }
 
 SLOT_REPLY_ANY_WORDS = {
-    "اي",
-    "اي حاجة",
-    "مش فارقة",
-    "اي حد",
-    "كله شغال",
-    "مش مهم",
+    "اي", "اي حاجة", "مش فارقة", "اي حد", "كله شغال", "مش مهم",
+    "any", "anything", "anywhere", "any price", "doesn't matter",
+    "i don't mind", "whatever",
 }
 
 NEGATION_WORDS = {
-    "مش",
-    "غير",
-    "بدون",
-    "without",
-    "no",
-    "not",
-    "لا",
-    "لأ",
+    "مش", "غير", "بدون",
+    "without", "no", "not", "don't", "dont",
+    "لا", "لأ",
 }

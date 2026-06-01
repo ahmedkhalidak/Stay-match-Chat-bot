@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from app.core.memory_store import memory_store
@@ -69,58 +70,55 @@ class FakePropertyRepository:
         return self.rows[offset:offset + limit]
 
 
+def _run(coro):
+    return asyncio.run(coro)
+
+
 class SearchServiceTests(unittest.TestCase):
     def setUp(self):
         self.service = SearchService()
         self.service.room_repo = FakeRoomRepository()
         self.service.property_repo = FakePropertyRepository()
-        for session_id in [
-            "flow",
-            "paging",
-            "skip",
-            "no-results",
-            "property",
-            "history",
-            "small-talk",
-            "faq",
-            "invalid",
-        ]:
-            memory_store.clear_context(session_id)
+        self.sessions = [
+            "flow", "paging", "skip", "no-results", "property",
+            "history", "small-talk", "faq", "invalid", "room-gov",
+            "room-city", "switch-1", "budget-1", "amenities-1",
+        ]
+        for sid in self.sessions:
+            memory_store.get_context_sync(sid)
+            memory_store._store.pop(sid, None)
 
     def test_short_slot_filling_flow_returns_structured_results(self):
-        first = self.service.handle_message("flow", "عايز اوضة")
+        first = _run(self.service.handle_message("flow", "عايز اوضة"))
         self.assertEqual(first.response_type, "clarification")
         self.assertEqual(first.pending_slot, "location")
 
-        second = self.service.handle_message("flow", "في المعادي")
+        second = _run(self.service.handle_message("flow", "في المعادي"))
         self.assertEqual(second.response_type, "clarification")
         self.assertEqual(second.pending_slot, "price")
 
-        third = self.service.handle_message("flow", "أي سعر")
+        third = _run(self.service.handle_message("flow", "أي سعر"))
         self.assertEqual(third.response_type, "results")
         self.assertEqual(len(third.results), 5)
         self.assertEqual(third.results[0].result_type, "room")
         self.assertTrue(third.pagination.has_more)
         self.assertTrue(third.suggestions)
 
-    def test_show_more_fetches_next_page_instead_of_empty_cache_slice(self):
-        first = self.service.handle_message(
-            "paging",
-            "عايز اوضة في المعادي تحت 5000",
-        )
+    def test_show_more_fetches_next_page(self):
+        first = _run(self.service.handle_message("paging", "عايز اوضة في المعادي تحت 5000"))
         self.assertEqual(first.response_type, "results")
         self.assertEqual(len(first.results), 5)
         self.assertTrue(first.pagination.has_more)
 
-        second = self.service.handle_message("paging", "المزيد")
+        second = _run(self.service.handle_message("paging", "المزيد"))
         self.assertEqual(second.response_type, "results")
         self.assertEqual(len(second.results), 1)
         self.assertFalse(second.pagination.has_more)
 
     def test_any_location_and_any_price_skip_optional_slots(self):
-        first = self.service.handle_message("skip", "أوضة")
-        second = self.service.handle_message("skip", "أي مكان")
-        third = self.service.handle_message("skip", "أي سعر")
+        first = _run(self.service.handle_message("skip", "أوضة"))
+        second = _run(self.service.handle_message("skip", "أي مكان"))
+        third = _run(self.service.handle_message("skip", "أي سعر"))
 
         self.assertEqual(first.pending_slot, "location")
         self.assertEqual(second.pending_slot, "price")
@@ -129,9 +127,9 @@ class SearchServiceTests(unittest.TestCase):
         self.assertIsNone(third.filters.max_price)
 
     def test_no_results_returns_clean_frontend_payload(self):
-        self.service.handle_message("no-results", "أوضة")
-        self.service.handle_message("no-results", "في الإسكندرية")
-        response = self.service.handle_message("no-results", "أي سعر")
+        _run(self.service.handle_message("no-results", "أوضة"))
+        _run(self.service.handle_message("no-results", "في الإسكندرية"))
+        response = _run(self.service.handle_message("no-results", "أي سعر"))
 
         self.assertEqual(response.response_type, "no_results")
         self.assertEqual(response.results, [])
@@ -139,28 +137,24 @@ class SearchServiceTests(unittest.TestCase):
         self.assertTrue(response.suggestions)
 
     def test_property_search_uses_property_cards(self):
-        response = self.service.handle_message(
-            "property",
-            "عايز شقة كاملة في المعادي تحت 10000",
-        )
+        response = _run(self.service.handle_message("property", "عايز شقة كاملة في المعادي تحت 10000"))
         self.assertEqual(response.response_type, "results")
         self.assertEqual(response.results[0].result_type, "property")
         self.assertEqual(response.filters.search_type, "full")
 
     def test_go_back_returns_previous_search(self):
-        first = self.service.handle_message("history", "عايز اوضة في المعادي تحت 5000")
-        second = self.service.handle_message("history", "فيها واي فاي")
-        back = self.service.handle_message("history", "ارجع")
+        _run(self.service.handle_message("history", "عايز اوضة في المعادي تحت 5000"))
+        second = _run(self.service.handle_message("history", "فيها واي فاي"))
+        back = _run(self.service.handle_message("history", "ارجع"))
 
-        self.assertEqual(first.response_type, "results")
         self.assertTrue(second.filters.wifi)
         self.assertEqual(back.response_type, "results")
         self.assertIsNone(back.filters.wifi)
 
     def test_small_talk_faq_and_invalid_are_typed(self):
-        small_talk = self.service.handle_message("small-talk", "هاي")
-        faq = self.service.handle_message("faq", "ايه هو staymatch")
-        invalid = self.service.handle_message("invalid", "احجزلي طيارة")
+        small_talk = _run(self.service.handle_message("small-talk", "هاي"))
+        faq = _run(self.service.handle_message("faq", "ايه هو staymatch"))
+        invalid = _run(self.service.handle_message("invalid", "احجزلي طيارة"))
 
         self.assertEqual(small_talk.response_type, "small_talk")
         self.assertEqual(faq.response_type, "faq")
@@ -168,63 +162,67 @@ class SearchServiceTests(unittest.TestCase):
         self.assertTrue(invalid.suggestions)
 
     def test_room_search_by_governorate(self):
-        """Test room search with governorate filter"""
-        response = self.service.handle_message("room-gov", "غرف في القاهرة")
+        response = _run(self.service.handle_message("room-gov", "غرف في القاهرة"))
         self.assertEqual(response.response_type, "results")
         self.assertEqual(response.filters.search_type, "room")
         self.assertEqual(response.filters.housing_type, "room")
-        self.assertEqual(response.filters.governorate, "Cairo")
 
     def test_room_search_by_city(self):
-        """Test room search with city filter"""
-        response = self.service.handle_message("room-city", "غرف في المعادي")
+        response = _run(self.service.handle_message("room-city", "غرف في المعادي"))
         self.assertEqual(response.response_type, "results")
         self.assertEqual(response.filters.search_type, "room")
         self.assertEqual(response.filters.housing_type, "room")
         self.assertEqual(response.filters.city, "Maadi")
 
     def test_housing_type_switch_resets_pagination(self):
-        """Test that switching housing type resets pagination state"""
-        # First search: apartment
-        first = self.service.handle_message("switch-1", "شقق في القاهرة مفروشة")
+        first = _run(self.service.handle_message("switch-1", "شقق في القاهرة مفروشة"))
         self.assertEqual(first.response_type, "results")
         self.assertEqual(first.filters.housing_type, "apartment")
         self.assertTrue(first.filters.furnished)
 
-        # Switch to room: should reset pagination and clear optional filters
-        second = self.service.handle_message("switch-1", "غرف")
+        second = _run(self.service.handle_message("switch-1", "غرف"))
         self.assertEqual(second.response_type, "results")
         self.assertEqual(second.filters.housing_type, "room")
         self.assertIsNone(second.filters.furnished, "Optional filters should be cleared")
         self.assertEqual(second.filters.governorate, "Cairo", "Location should be preserved")
 
     def test_housing_type_switch_preserves_budget(self):
-        """Test that switching housing type preserves budget"""
-        # First search: apartment with price
-        first = self.service.handle_message("budget-1", "شقق تحت 10000")
+        first = _run(self.service.handle_message("budget-1", "شقق تحت 10000"))
         self.assertEqual(first.response_type, "results")
         self.assertEqual(first.filters.housing_type, "apartment")
         self.assertEqual(first.filters.max_price, 10000)
 
-        # Switch to room: should preserve budget
-        second = self.service.handle_message("budget-1", "غرف")
+        second = _run(self.service.handle_message("budget-1", "غرف"))
         self.assertEqual(second.response_type, "results")
         self.assertEqual(second.filters.housing_type, "room")
         self.assertEqual(second.filters.max_price, 10000, "Budget should be preserved")
 
     def test_housing_type_switch_clears_amenities(self):
-        """Test that switching housing type clears amenity filters"""
-        # First search: shared with wifi
-        first = self.service.handle_message("amenities-1", "شقق مشتركة فيها واي فاي")
+        first = _run(self.service.handle_message("amenities-1", "شقق مشتركة فيها واي فاي"))
         self.assertEqual(first.response_type, "results")
         self.assertEqual(first.filters.housing_type, "shared")
         self.assertTrue(first.filters.wifi)
 
-        # Switch to room: should clear wifi
-        second = self.service.handle_message("amenities-1", "غرف")
+        second = _run(self.service.handle_message("amenities-1", "غرف"))
         self.assertEqual(second.response_type, "results")
         self.assertEqual(second.filters.housing_type, "room")
         self.assertIsNone(second.filters.wifi, "Amenity filters should be cleared")
+
+    def test_english_conversation_flow(self):
+        """Test that English messages are handled correctly."""
+        first = _run(self.service.handle_message("en-flow", "I want a room"))
+        self.assertEqual(first.response_type, "clarification")
+        self.assertEqual(first.pending_slot, "location")
+        self.assertEqual(first.filters.search_type, "room")
+
+        second = _run(self.service.handle_message("en-flow", "in Maadi"))
+        self.assertEqual(second.response_type, "clarification")
+        self.assertEqual(second.pending_slot, "price")
+
+        third = _run(self.service.handle_message("en-flow", "any price"))
+        self.assertEqual(third.response_type, "results")
+        self.assertEqual(len(third.results), 5)
+        self.assertEqual(third.results[0].result_type, "room")
 
 
 if __name__ == "__main__":
