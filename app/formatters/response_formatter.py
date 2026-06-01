@@ -12,8 +12,9 @@ class ResponseFormatter:
         filters=None,
         has_more: bool = False,
         page_num: int = 1,
+        scores: dict[int, float] = None,
     ) -> tuple[str, list[SearchResultItem]]:
-        cards = [self._room_card(room) for room in rooms]
+        cards = [self._room_card(room, scores) for room in rooms]
         location = self._filter_location(filters)
         header = self._result_header(
             count=len(cards),
@@ -30,8 +31,9 @@ class ResponseFormatter:
         filters=None,
         has_more: bool = False,
         page_num: int = 1,
+        scores: dict[int, float] = None,
     ) -> tuple[str, list[SearchResultItem]]:
-        cards = [self._property_card(prop, filters) for prop in properties]
+        cards = [self._property_card(prop, filters, scores) for prop in properties]
         search_type = filters.search_type if filters else "property"
         label = {
             "shared": "شقة مشتركة",
@@ -60,7 +62,7 @@ class ResponseFormatter:
         more_text = " فيه نتائج تانية كمان." if has_more else ""
         return f"لقيت {count} {label}{location_text}{page_text}.{more_text}".strip()
 
-    def _room_card(self, room) -> SearchResultItem:
+    def _room_card(self, room, scores=None) -> SearchResultItem:
         location = self._row_location(
             city=room.get("City"),
             governorate=room.get("Government"),
@@ -102,9 +104,10 @@ class ResponseFormatter:
                 "furnished": bool(room.get("Furnished")),
                 "shared_room": capacity > 1,
             },
+            recommendation_score=scores.get(room.get("Id")) if scores else None,
         )
 
-    def _property_card(self, prop, filters) -> SearchResultItem:
+    def _property_card(self, prop, filters, scores=None) -> SearchResultItem:
         search_type = filters.search_type if filters else "property"
         location = self._row_location(
             city=prop.get("City"),

@@ -22,6 +22,7 @@ class SearchResultItem(BaseModel):
     details: list[str] = Field(default_factory=list)
     amenities: list[str] = Field(default_factory=list)
     attributes: dict[str, Any] = Field(default_factory=dict)
+    recommendation_score: Optional[float] = None
 
 
 class PaginationMeta(BaseModel):

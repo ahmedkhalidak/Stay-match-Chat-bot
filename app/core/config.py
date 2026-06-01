@@ -7,6 +7,8 @@ class Settings(BaseSettings):
 
     groq_api_key: str
 
+    recommendation_service_url: str | None = None
+
     db_host: str
     db_port: int
     db_name: str

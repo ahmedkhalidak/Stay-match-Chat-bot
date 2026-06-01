@@ -9,6 +9,10 @@ from app.services.search_executor import SearchExecutor
 from app.utils.logger import debug_log
 from app.utils.bilingual_responses import t
 from app.services.rag_service import RagService
+from app.services.recommendation_client import (
+    get_recommendation_scores, get_room_recommendation_scores,
+    send_interaction, trigger_preferences_sync
+)
 
 
 class SearchService:
@@ -120,6 +124,8 @@ class SearchService:
         filters = self.flow.apply_user_overrides(context, filters, message)
         self.flow.sync_skipped_slots(context, filters)
         context.update_preferences(filters)
+        if context.user_id and context.user_preferences:
+            trigger_preferences_sync()
 
         clarification, slot = self.flow.get_next_clarification(context, filters)
         if clarification:
