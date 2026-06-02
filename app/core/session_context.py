@@ -53,6 +53,7 @@ class SessionContext(BaseModel):
     use_cursor_pagination: bool = False
 
     # ── NEW: Smart conversation tracking ──
+    user_id: Optional[str] = None
     user_preferences: UserPreferences = Field(default_factory=UserPreferences)
     seen_property_ids: set[int] = Field(default_factory=set)
     seen_room_ids: set[int] = Field(default_factory=set)
