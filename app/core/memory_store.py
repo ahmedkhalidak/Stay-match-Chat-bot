@@ -23,6 +23,7 @@ class MemoryStore:
         self.search_history_repo = None
         self.preferences_repo = None
         self.analytics_repo = None
+        self._max_sessions = 1000  # Limit in-memory sessions to prevent OOM
 
         try:
             from app.database.repositories.conversation_repository import ConversationRepository
@@ -55,6 +56,10 @@ class MemoryStore:
                         ctx = self._reconstruct_context(conversation, session_id)
                         if ctx:
                             self._store[session_id] = ctx
+                            # Evict oldest sessions if limit exceeded
+                            if len(self._store) > self._max_sessions:
+                                oldest_key = next(iter(self._store))
+                                del self._store[oldest_key]
                             return self._store[session_id]
                 except Exception:
                     pass
@@ -63,6 +68,10 @@ class MemoryStore:
             lang = detect_language(message) if message else "ar"
             ctx = SessionContext(language=lang)
             self._store[session_id] = ctx
+            # Evict oldest sessions if limit exceeded
+            if len(self._store) > self._max_sessions:
+                oldest_key = next(iter(self._store))
+                del self._store[oldest_key]
             if self.use_database:
                 self._create_db_session(session_id, lang)
             return ctx

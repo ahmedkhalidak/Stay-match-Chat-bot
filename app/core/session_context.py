@@ -119,8 +119,14 @@ class SessionContext(BaseModel):
         """Track IDs the user has already seen to avoid duplicates"""
         if property_ids:
             self.seen_property_ids.update(property_ids)
+            # Limit to prevent memory bloat (keep last 1000)
+            if len(self.seen_property_ids) > 1000:
+                self.seen_property_ids = set(list(self.seen_property_ids)[-1000:])
         if room_ids:
             self.seen_room_ids.update(room_ids)
+            # Limit to prevent memory bloat (keep last 1000)
+            if len(self.seen_room_ids) > 1000:
+                self.seen_room_ids = set(list(self.seen_room_ids)[-1000:])
 
     def update_preferences(self, filters: SearchFilters):
         """Extract and store user preferences from filters"""

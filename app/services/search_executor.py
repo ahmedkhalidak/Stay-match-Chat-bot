@@ -56,6 +56,9 @@ class SearchExecutor:
             context.cached_results = list(results)
         else:
             context.cached_results.extend(list(results))
+            # Limit cached results to prevent memory bloat (keep last 100)
+            if len(context.cached_results) > 100:
+                context.cached_results = context.cached_results[-100:]
 
         if not results and (offset > 0):
             return ChatResponse(
