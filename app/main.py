@@ -24,7 +24,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="StayMatch AI Service",
     lifespan=lifespan,
-    security=[{"Bearer": []}],
+    security=[{"BearerAuth": []}],
 )
+
+
+# Configure OpenAPI security scheme for Bearer JWT authentication
+app.openapi_security_schema = {
+    "BearerAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Enter the full Authorization header value including 'Bearer' prefix (e.g., 'Bearer eyJhbGci...')"
+    }
+}
+
+
+# Override OpenAPI to include custom security scheme
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = app.openapi()
+    openapi_schema["components"]["securitySchemes"] = app.openapi_security_schema
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.include_router(router)
