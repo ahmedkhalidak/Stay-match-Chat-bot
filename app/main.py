@@ -4,9 +4,13 @@ os.environ["CHROMA_TELEMETRY"] = "false"
 os.environ["CHROMA_SKIP_TELEMETRY"] = "true"
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+import logging
 from app.api.routes import router
 from app.core.security import security
+
+logger = logging.getLogger("staymatch")
 
 
 @asynccontextmanager
@@ -31,10 +35,9 @@ app = FastAPI(
 # Configure OpenAPI security scheme for Bearer JWT authentication
 app.openapi_security_schema = {
     "BearerAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "Authorization",
-        "description": "Enter the full Authorization header value including 'Bearer' prefix (e.g., 'Bearer eyJhbGci...')"
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
     }
 }
 
@@ -54,5 +57,20 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+
+# Middleware to log incoming request headers for diagnostics
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        auth_present = "Authorization" in request.headers
+        logger.info(f"Request: {request.method} {request.url.path} - Authorization present: {auth_present}")
+        if auth_present:
+            auth_header = request.headers.get("Authorization", "")
+            logger.info(f"Authorization header prefix: {auth_header[:20] if auth_header else 'empty'}...")
+        response = await call_next(request)
+        return response
+
+
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(router)

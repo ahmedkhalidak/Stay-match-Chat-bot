@@ -5,7 +5,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from pydantic import BaseModel
 import jwt
+import logging
 from app.core.config import settings
+
+logger = logging.getLogger("staymatch.security")
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -54,15 +57,15 @@ class CurrentUser(BaseModel):
     name: Optional[str] = None
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> CurrentUser:
     """
     Extract and validate JWT token from Authorization header.
-    
+
     Returns CurrentUser with user_id extracted from JWT claims.
-    
+
     Raises HTTPException with 401 status if:
     - Token is missing
     - Token is invalid
@@ -70,11 +73,20 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     - Token signature is invalid
     - Required claims are missing
     """
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    
+    logger.info("GET_CURRENT_USER_ENTERED")
+
+    if credentials is None:
+        logger.error("NO_CREDENTIALS_RECEIVED")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authorization header"
+        )
+
+    logger.info(f"Credentials object: {credentials}")
     token = credentials.credentials
-    
+    logger.info(f"Authorization token received: {token[:30]}...")
+
+    logger.info("STARTING_JWT_DECODE")
     try:
         # Decode and validate JWT
         payload = jwt.decode(
@@ -84,11 +96,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             issuer=settings.jwt_issuer,
             audience=settings.jwt_audience,
         )
+        logger.info("JWT_DECODE_SUCCESS")
     except jwt.ExpiredSignatureError:
+        logger.exception("JWT_DECODE_FAILED - Token expired")
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError as e:
+        logger.exception("JWT_DECODE_FAILED - Invalid token")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     except Exception as e:
+        logger.exception("JWT_DECODE_FAILED - Validation error")
         raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
     
     # Extract user_id from JWT claims
