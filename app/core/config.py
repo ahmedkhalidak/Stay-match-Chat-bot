@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     chatbot_db_user: str | None = None
     chatbot_db_password: str | None = None
 
+    # JWT Authentication configuration
+    jwt_secret: str = ""
+    jwt_issuer: str = ""
+    jwt_audience: str = ""
+
     @property
     def db_url(self):
         encoded_password = quote_plus(self.db_password)
@@ -57,3 +62,7 @@ class Settings(BaseSettings):
         env_file = ".env"
 
         extra = "ignore"
+
+
+# Singleton instance
+settings = Settings()

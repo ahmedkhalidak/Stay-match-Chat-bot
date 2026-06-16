@@ -6,6 +6,7 @@ os.environ["CHROMA_SKIP_TELEMETRY"] = "true"
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.routes import router
+from app.core.security import security
 
 
 @asynccontextmanager
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="StayMatch AI Service",
     lifespan=lifespan,
+    security=[{"Bearer": []}],
 )
 
 app.include_router(router)

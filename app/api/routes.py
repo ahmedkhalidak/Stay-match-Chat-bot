@@ -1,20 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from app.models.chat_models import ChatRequest
 from app.models.response_models import ChatResponse
 from app.services.search_service import SearchService
 from app.database.connection import engine as property_engine
 from app.database.chatbot_connection import get_chatbot_engine
+from app.core.security import get_current_user
 
 router = APIRouter()
 search_service = SearchService()
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest):
+async def chat(payload: ChatRequest, current_user: get_current_user = Depends(get_current_user)):
     return await search_service.handle_message(
-        session_id=payload.user_id,
-        user_id=payload.user_id,
+        session_id=current_user.user_id,
+        user_id=current_user.user_id,
         message=payload.message,
     )
 
