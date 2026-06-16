@@ -28,13 +28,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="StayMatch AI Service",
     lifespan=lifespan,
-    security=[{"BearerAuth": []}],
+    security=[{"HTTPBearer": []}],
 )
 
 
 # Configure OpenAPI security scheme for Bearer JWT authentication
 app.openapi_security_schema = {
-    "BearerAuth": {
+    "HTTPBearer": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
