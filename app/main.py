@@ -1,3 +1,8 @@
+# Must be set before ANY other import (ChromaDB loads at import time)
+import os
+os.environ["CHROMA_TELEMETRY"] = "false"
+os.environ["CHROMA_SKIP_TELEMETRY"] = "true"
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.routes import router

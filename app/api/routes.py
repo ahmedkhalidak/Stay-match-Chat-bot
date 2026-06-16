@@ -13,8 +13,9 @@ search_service = SearchService()
 @router.post("/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest):
     return await search_service.handle_message(
-        payload.session_id,
-        payload.message,
+        session_id=payload.user_id,
+        user_id=payload.user_id,
+        message=payload.message,
     )
 
 

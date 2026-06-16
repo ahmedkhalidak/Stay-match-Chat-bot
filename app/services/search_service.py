@@ -1,5 +1,5 @@
 from app.core.memory_store import memory_store
-from app.core.session_context import SessionContext
+from app.core.session_context import SessionContext, UserPreferences
 from app.models.response_models import ChatResponse
 from app.models.search_models import SearchFilters
 from app.nlp.nlp_pipeline import NLPPipeline
@@ -44,12 +44,32 @@ class SearchService:
         """Fire-and-forget DB persistence — doesn't block the response."""
         memory_store._sync_to_db(session_id, context)
 
-    async def handle_message(self, session_id: str, message: str) -> ChatResponse:
-        debug_log("SEARCH_SERVICE", f"session={session_id}, msg={message[:100]}")
+    async def handle_message(self, session_id: str, message: str, user_id: str) -> ChatResponse:
+        debug_log("SEARCH_SERVICE", f"session={session_id}, msg={message[:100]}, user={user_id}")
 
         context = await memory_store.get_context(session_id, message)
         context.turn_count += 1
         lang = context.language
+
+        if not context.user_id:
+            context.user_id = user_id
+            memory_store.conversation_repo.update_user_id(session_id, user_id)
+            # Load user preferences from database
+            prefs = memory_store.preferences_repo.load_preferences(user_id)
+            if prefs:
+                p = context.user_preferences
+                p.min_budget = prefs.get("min_budget")
+                p.max_budget = prefs.get("max_budget")
+                p.preferred_location = prefs.get("preferred_location")
+                p.tenant_type = prefs.get("tenant_type")
+                p.gender = prefs.get("gender")
+                p.furnished = prefs.get("furnished")
+                p.wifi = prefs.get("wifi")
+                p.air_conditioning = prefs.get("air_conditioning")
+                p.balcony = prefs.get("balcony")
+                p.private_bathroom = prefs.get("private_bathroom")
+                p.shared_room = prefs.get("shared_room")
+                debug_log("PREFERENCES_LOADED", f"Loaded preferences for user {user_id}")
 
         history_text = context.get_history_text()
         filters = self.nlp_pipeline.extract(
@@ -74,17 +94,17 @@ class SearchService:
                     filters.governorate = context.last_search.governorate
 
         intent = filters.intent or "invalid"
-        context.add_message("user", message)
+        await memory_store.store_message(session_id, "user", message, context)
 
         if intent == "show_more":
             response = self._handle_show_more(session_id, context, message, lang)
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
         if intent == "go_back":
             response = self._handle_go_back(session_id, context, message, lang)
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
@@ -93,7 +113,7 @@ class SearchService:
                 reply=self.chat.generate_reply(message, lang),
                 response_type="small_talk",
             )
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
@@ -102,7 +122,7 @@ class SearchService:
             if not answer:
                 answer = t("FAQ_NO_ANSWER", lang)
             response = ChatResponse(reply=answer, response_type="faq")
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
@@ -116,7 +136,7 @@ class SearchService:
                     response_type="fallback",
                     suggestions=self.flow.get_slot_suggestions("search_type", lang),
                 )
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
@@ -138,7 +158,7 @@ class SearchService:
                 filters=filters,
                 suggestions=self.flow.get_slot_suggestions(slot, lang),
             )
-            context.add_message("assistant", response.reply)
+            await memory_store.store_message(session_id, "assistant", response.reply, context)
             self._bg_save(session_id, context)
             return response
 
@@ -165,7 +185,7 @@ class SearchService:
                 suggestions=self.flow.get_slot_suggestions(slot, lang),
             )
 
-        context.add_message("assistant", response.reply)
+        await memory_store.store_message(session_id, "assistant", response.reply, context)
         self._bg_save(session_id, context)
         return response
 

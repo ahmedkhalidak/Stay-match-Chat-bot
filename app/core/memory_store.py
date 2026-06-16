@@ -115,10 +115,11 @@ class MemoryStore:
     def _create_db_session(self, session_id: str, language: str):
         try:
             meta = json.dumps({"language": language})
-            self.conversation_repo.create_conversation(session_id=session_id, metadata=meta)
+            conversation_id = self.conversation_repo.create_conversation(session_id=session_id, metadata=meta)
+            debug_log("MEMORY_DB", f"Session {session_id} → conversation {conversation_id}")
             self.analytics_repo.create_session(session_id)
-        except Exception:
-            pass
+        except Exception as e:
+            debug_log("MEMORY_DB_ERROR", f"Failed to create DB session for {session_id}: {e}")
 
     async def update_context(self, session_id: str, context: SessionContext):
         async with self._lock:
@@ -131,7 +132,26 @@ class MemoryStore:
         try:
             meta = self._serialize_context(context)
             self.conversation_repo.update_metadata(session_id, meta)
-            self.conversation_repo.update_last_activity(session_id, len(context.conversation_history))
+            self.conversation_repo.update_last_activity(session_id)
+            # Persist user preferences to dedicated table
+            if context.user_id and context.user_preferences:
+                p = context.user_preferences
+                self.preferences_repo.save_preferences(
+                    context.user_id,
+                    {
+                        "min_budget": p.min_budget,
+                        "max_budget": p.max_budget,
+                        "preferred_location": p.preferred_location,
+                        "tenant_type": p.tenant_type,
+                        "gender": p.gender,
+                        "furnished": p.furnished,
+                        "wifi": p.wifi,
+                        "air_conditioning": p.air_conditioning,
+                        "balcony": p.balcony,
+                        "private_bathroom": p.private_bathroom,
+                        "shared_room": p.shared_room,
+                    },
+                )
         except Exception:
             pass
 

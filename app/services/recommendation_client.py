@@ -5,6 +5,7 @@ Also sends interactions and triggers sync via HTTP when the recommendation servi
 """
 import logging
 import os
+import threading
 from typing import Optional
 
 from app.database.chatbot_connection import get_chatbot_session
@@ -13,6 +14,7 @@ from sqlalchemy import text
 logger = logging.getLogger("staymatch.recommendation_client")
 
 _REC_SERVICE_URL = os.environ.get("RECOMMENDATION_SERVICE_URL", "")
+_SYNC_ENABLED = True  # Cache: becomes False after first non-200 response
 
 
 def _get_rec_url() -> str:
@@ -74,6 +76,11 @@ def get_room_recommendation_scores(user_id: str, room_ids: list[int]) -> dict[in
         return {}
 
 
+def _fire_and_forget(fn, *args, **kwargs):
+    """Run a function in a background thread — never blocks the response."""
+    threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True).start()
+
+
 def trigger_recommendation_sync():
     """Call the recommendation service to trigger data sync from MSSQL."""
     url = _get_rec_url()
@@ -100,9 +107,17 @@ def send_interaction(user_id: str, target_type: str, target_id: int, action: str
                      search_lat: Optional[float] = None,
                      search_lng: Optional[float] = None):
     """
-    Send user interaction to the recommendation service via HTTP.
+    Send user interaction to the recommendation service via HTTP (fire-and-forget).
     Falls back to direct DB insert if HTTP fails.
     """
+    _fire_and_forget(_send_interaction_sync, user_id, target_type, target_id, action,
+                     dwell_seconds, search_lat, search_lng)
+
+
+def _send_interaction_sync(user_id: str, target_type: str, target_id: int, action: str,
+                            dwell_seconds: Optional[int] = None,
+                            search_lat: Optional[float] = None,
+                            search_lng: Optional[float] = None):
     url = _get_rec_url()
     payload = {
         "user_id": user_id,
@@ -144,19 +159,27 @@ def send_interaction(user_id: str, target_type: str, target_id: int, action: str
 
 
 def trigger_preferences_sync():
-    """Sync chatbot user_preferences into recommendation service."""
+    """Sync chatbot user_preferences into recommendation service (fire-and-forget)."""
+    _fire_and_forget(_trigger_preferences_sync)
+
+
+def _trigger_preferences_sync():
+    global _SYNC_ENABLED
+    if not _SYNC_ENABLED:
+        return
     url = _get_rec_url()
     if not url:
         logger.info("No recommendation service URL — skipping preferences sync")
-        return False
+        return
     try:
         import httpx
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=5) as client:
             resp = client.post(f"{url}/admin/sync-preferences")
             if resp.status_code == 200:
                 logger.info("Preferences sync triggered")
-                return True
-            return False
+            else:
+                logger.warning("Preferences sync returned %s — disabling further sync calls", resp.status_code)
+                _SYNC_ENABLED = False
     except Exception as e:
-        logger.warning("Preferences sync failed: %s", e)
-        return False
+        logger.warning("Preferences sync failed: %s — disabling further sync calls", e)
+        _SYNC_ENABLED = False

@@ -23,7 +23,7 @@ class ConversationRepository:
         metadata: Optional[Dict[str, Any]] = None
     ) -> int:
         """
-        Create a new conversation
+        Create a new conversation, or return existing one if session_id already exists.
         
         Args:
             session_id: Unique session identifier
@@ -34,6 +34,11 @@ class ConversationRepository:
             Conversation ID
         """
         try:
+            existing = self.get_conversation_by_session(session_id)
+            if existing:
+                debug_log("CONVERSATION_EXISTS", f"Session {session_id} already has conversation {existing['id']}")
+                return existing["id"]
+
             import json
             metadata_json = json.dumps(metadata) if metadata else None
             
@@ -76,6 +81,8 @@ class ConversationRepository:
                                message_count, status, metadata
                         FROM conversations
                         WHERE session_id = :session_id
+                        ORDER BY id ASC
+                        LIMIT 1
                     """),
                     {"session_id": session_id}
                 )
@@ -129,6 +136,25 @@ class ConversationRepository:
                 debug_log("CONVERSATION_UPDATE", f"Updated activity for session {session_id}")
         except Exception as e:
             debug_log("CONVERSATION_ERROR", f"Failed to update conversation: {str(e)}")
+
+    def update_user_id(self, session_id: str, user_id: str) -> bool:
+        """Link a user_id to an existing conversation."""
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(
+                    text("""
+                        UPDATE conversations
+                        SET user_id = :user_id
+                        WHERE session_id = :session_id
+                    """),
+                    {"session_id": session_id, "user_id": user_id},
+                )
+                conn.commit()
+                debug_log("CONVERSATION_UPDATE", f"Linked user {user_id} to session {session_id}")
+                return True
+        except Exception as e:
+            debug_log("CONVERSATION_ERROR", f"Failed to update user_id: {e}")
+            return False
 
     def update_metadata(self, session_id: str, metadata: dict) -> bool:
         """Store/update JSON metadata for a conversation (full session context)."""

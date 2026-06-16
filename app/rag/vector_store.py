@@ -1,6 +1,11 @@
 import threading
 import chromadb
+from chromadb.config import Settings
 from chromadb.utils import embedding_functions
+
+# Completely disable ChromaDB telemetry (suppresses noisy telemetry errors in chromadb 1.5.x)
+import chromadb.telemetry.product as _tp
+_tp.ProductTelemetryClient.capture = lambda self, event: None
 from app.rag.faq_loader import load_faq_documents
 from app.utils.logger import debug_log
 
@@ -20,10 +25,15 @@ def _get_collection():
     debug_log("RAG", "Initializing ChromaDB...")
 
     try:
-        _client = chromadb.PersistentClient(path="/tmp/chromadb_staymatch")
+        _client = chromadb.PersistentClient(
+            path="/tmp/chromadb_staymatch",
+            settings=Settings(anonymized_telemetry=False),
+        )
         debug_log("RAG", "Using PersistentClient")
     except Exception:
-        _client = chromadb.Client()
+        _client = chromadb.Client(
+            settings=Settings(anonymized_telemetry=False),
+        )
         debug_log("RAG", "Falling back to in-memory Client")
 
     try:
