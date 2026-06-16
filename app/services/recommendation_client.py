@@ -14,6 +14,12 @@ from sqlalchemy import text
 logger = logging.getLogger("staymatch.recommendation_client")
 
 _REC_SERVICE_URL = os.environ.get("RECOMMENDATION_SERVICE_URL", "")
+_PREFERENCES_SYNC_CONFIGURED = os.environ.get("ENABLE_PREFERENCES_SYNC", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 _SYNC_ENABLED = True  # Cache: becomes False after first non-200 response
 
 
@@ -160,6 +166,8 @@ def _send_interaction_sync(user_id: str, target_type: str, target_id: int, actio
 
 def trigger_preferences_sync():
     """Sync chatbot user_preferences into recommendation service (fire-and-forget)."""
+    if not _PREFERENCES_SYNC_CONFIGURED:
+        return
     _fire_and_forget(_trigger_preferences_sync)
 
 

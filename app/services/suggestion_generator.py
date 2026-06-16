@@ -23,10 +23,6 @@ class SuggestionGenerator:
             suggestions = SuggestionGenerator._qs(t("LARGE_RESULT", lang))
             return suggestions[:4]
 
-        if total_results <= 5:
-            suggestions = SuggestionGenerator._qs(t("SMALL_RESULT", lang))
-            return suggestions[:4]
-
         if filters.search_type in ("property", "full"):
             suggestions = SuggestionGenerator._qs(t("APARTMENT_SUGGESTIONS", lang))
         elif filters.search_type == "shared":
@@ -39,7 +35,7 @@ class SuggestionGenerator:
             ]
 
         if has_more and "المزيد" not in [s.value for s in suggestions] and "More" not in [s.label for s in suggestions]:
-            suggestions.append(QuickReply(label="More" if lang == "en" else "المزيد", value="المزيد"))
+            suggestions.insert(0, QuickReply(label="More" if lang == "en" else "المزيد", value="المزيد"))
 
         return suggestions[:4]
 
@@ -98,9 +94,10 @@ class SuggestionGenerator:
         elif slot == "location":
             labels = t("LOCATION_SUGGESTIONS", lang)
             return [
-                QuickReply(label=labels[0], value="في المعادي" if lang == "ar" else "in maadi"),
-                QuickReply(label=labels[1], value="في الإسكندرية" if lang == "ar" else "in alexandria"),
-                QuickReply(label=labels[2], value="أي مكان" if lang == "ar" else "anywhere"),
+                QuickReply(label=labels[0], value="في القاهرة" if lang == "ar" else "in cairo"),
+                QuickReply(label=labels[1], value="في المعادي" if lang == "ar" else "in maadi"),
+                QuickReply(label=labels[2], value="في الإسكندرية" if lang == "ar" else "in alexandria"),
+                QuickReply(label=labels[3], value="أي مكان" if lang == "ar" else "anywhere"),
             ]
         elif slot == "price":
             labels = t("PRICE_SUGGESTIONS", lang)

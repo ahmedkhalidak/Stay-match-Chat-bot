@@ -14,8 +14,23 @@ class UserPreferencesRepository:
 
     def __init__(self):
         self.engine = get_chatbot_engine()
+        self._available: bool | None = None
+
+    def _mark_unavailable_if_missing(self, error: Exception) -> bool:
+        text = str(error).lower()
+        if "user_preferences" in text and (
+            "undefinedtable" in text
+            or "does not exist" in text
+            or "no such table" in text
+        ):
+            self._available = False
+            debug_log("PREFERENCES_DISABLED", "user_preferences table is unavailable; using session-only preferences")
+            return True
+        return False
 
     def save_preferences(self, user_id: str, preferences: Dict[str, Any]) -> bool:
+        if self._available is False:
+            return False
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(
@@ -59,13 +74,18 @@ class UserPreferencesRepository:
                     },
                 )
                 conn.commit()
+                self._available = True
                 debug_log("PREFERENCES_SAVE", f"Saved preferences for user {user_id}")
                 return True
         except Exception as e:
+            if self._mark_unavailable_if_missing(e):
+                return False
             debug_log("PREFERENCES_ERROR", f"Failed to save preferences: {e}")
             return False
 
     def load_preferences(self, user_id: str) -> Optional[Dict[str, Any]]:
+        if self._available is False:
+            return None
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(
@@ -80,6 +100,7 @@ class UserPreferencesRepository:
                 )
                 row = result.fetchone()
                 if row:
+                    self._available = True
                     return {
                         "min_budget": row[0],
                         "max_budget": row[1],
@@ -93,12 +114,17 @@ class UserPreferencesRepository:
                         "private_bathroom": row[9],
                         "shared_room": row[10],
                     }
+                self._available = True
                 return None
         except Exception as e:
+            if self._mark_unavailable_if_missing(e):
+                return None
             debug_log("PREFERENCES_ERROR", f"Failed to load preferences: {e}")
             return None
 
     def delete_preferences(self, user_id: str) -> bool:
+        if self._available is False:
+            return False
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(
@@ -108,5 +134,7 @@ class UserPreferencesRepository:
                 conn.commit()
                 return result.rowcount > 0
         except Exception as e:
+            if self._mark_unavailable_if_missing(e):
+                return False
             debug_log("PREFERENCES_ERROR", f"Failed to delete preferences: {e}")
             return False

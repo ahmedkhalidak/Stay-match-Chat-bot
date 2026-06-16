@@ -59,6 +59,11 @@ class FakeRoomRepository:
             return []
         return self.rows[offset:offset + limit]
 
+    def count(self, filters):
+        if filters.city == "Alexandria" or filters.governorate == "Alexandria":
+            return 0
+        return len(self.rows)
+
 
 class FakePropertyRepository:
     def __init__(self):
@@ -68,6 +73,9 @@ class FakePropertyRepository:
     def search(self, filters, offset=0, limit=5):
         self.calls.append(filters.model_copy(deep=True))
         return self.rows[offset:offset + limit]
+
+    def count(self, filters):
+        return len(self.rows)
 
 
 def _run(coro):
@@ -83,6 +91,9 @@ class SearchServiceTests(unittest.TestCase):
             "flow", "paging", "skip", "no-results", "property",
             "history", "small-talk", "faq", "invalid", "room-gov",
             "room-city", "switch-1", "budget-1", "amenities-1",
+            "lang-switch", "flutter-apartment", "flutter-room",
+            "flutter-add", "flutter-booking", "flutter-ratings", "flutter-support",
+            "flutter-flow",
         ]
         for sid in self.sessions:
             memory_store.get_context_sync(sid)
@@ -223,6 +234,69 @@ class SearchServiceTests(unittest.TestCase):
         self.assertEqual(third.response_type, "results")
         self.assertEqual(len(third.results), 5)
         self.assertEqual(third.results[0].result_type, "room")
+
+    def test_language_switches_per_incoming_message(self):
+        first = _run(self.service.handle_message("lang-switch", "عايز اوضة"))
+        self.assertIn("تحب تدور فين", first.reply)
+
+        second = _run(self.service.handle_message("lang-switch", "in Maadi"))
+        self.assertIn("monthly budget", second.reply)
+
+        third = _run(self.service.handle_message("lang-switch", "أي سعر"))
+        self.assertTrue(third.reply.startswith("لقيت"))
+
+        fourth = _run(self.service.handle_message("lang-switch", "more"))
+        self.assertTrue(fourth.reply.startswith("Found"))
+
+    def test_flutter_sidebar_search_shortcuts(self):
+        apartment = _run(self.service.handle_message("flutter-apartment", "find_full_apartment"))
+        self.assertEqual(apartment.response_type, "find_apartment")
+        self.assertEqual(apartment.pending_slot, "location")
+        self.assertEqual(apartment.filters.search_type, "full")
+        self.assertEqual(apartment.filters.housing_type, "apartment")
+        self.assertEqual(len(apartment.suggestions), 4)
+
+        room = _run(self.service.handle_message("flutter-room", "find_room"))
+        self.assertEqual(room.response_type, "find_room")
+        self.assertEqual(room.pending_slot, "location")
+        self.assertEqual(room.filters.search_type, "room")
+        self.assertEqual(room.filters.housing_type, "room")
+
+    def test_flutter_sidebar_help_shortcuts(self):
+        cases = [
+            ("flutter-add", "how_to_add_property", "add_property_help"),
+            ("flutter-booking", "booking_help", "booking_help"),
+            ("flutter-ratings", "ratings_help", "ratings_help"),
+            ("flutter-support", "support_help", "support_help"),
+        ]
+        for session_id, message, response_type in cases:
+            with self.subTest(message=message):
+                response = _run(self.service.handle_message(session_id, message))
+                self.assertEqual(response.response_type, response_type)
+                self.assertTrue(response.reply)
+                self.assertTrue(response.suggestions)
+
+    def test_flutter_demo_search_flow(self):
+        first = _run(self.service.handle_message("flutter-flow", "عاوز شقة"))
+        self.assertEqual(first.response_type, "clarification")
+        self.assertEqual(first.pending_slot, "location")
+        self.assertEqual(
+            [suggestion.label for suggestion in first.suggestions],
+            ["القاهرة", "المعادي", "الإسكندرية", "أي مكان"],
+        )
+
+        second = _run(self.service.handle_message("flutter-flow", "cairo"))
+        self.assertEqual(second.response_type, "clarification")
+        self.assertEqual(second.pending_slot, "price")
+
+        third = _run(self.service.handle_message("flutter-flow", "أي سعر"))
+        self.assertEqual(third.response_type, "results")
+        self.assertTrue(third.results)
+        self.assertIn("مفروشة", [suggestion.label for suggestion in third.suggestions])
+
+        fourth = _run(self.service.handle_message("flutter-flow", "مفروشة"))
+        self.assertEqual(fourth.response_type, "results")
+        self.assertTrue(fourth.filters.furnished)
 
 
 if __name__ == "__main__":

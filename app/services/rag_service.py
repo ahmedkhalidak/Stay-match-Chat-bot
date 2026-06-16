@@ -10,15 +10,15 @@ class RagService:
     def answer(self, message: str, lang: str = "ar") -> str | None:
         debug_log("RAG_INPUT", f"Query: {message} lang={lang}")
 
+        fuzzy_answer = _knowledge_service.find_answer(message, lang=lang)
+        if fuzzy_answer:
+            debug_log("RAG_SERVICE", "Answered via KnowledgeService")
+            return fuzzy_answer
+
         rag_answer = query_faq(message, n_results=3, lang=lang)
         if rag_answer:
             debug_log("RAG_SERVICE", "Answered via ChromaDB")
             return rag_answer
-
-        fuzzy_answer = _knowledge_service.find_answer(message)
-        if fuzzy_answer:
-            debug_log("RAG_SERVICE", "Answered via KnowledgeService")
-            return fuzzy_answer
 
         debug_log("RAG_NO_ANSWER", "No answer found")
         return None

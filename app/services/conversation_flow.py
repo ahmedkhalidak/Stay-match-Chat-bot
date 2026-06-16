@@ -66,7 +66,6 @@ class ConversationFlow:
 
         if message and filters.housing_type and self._is_root_search_housing_type(message):
             debug_log("ROOT_SEARCH_DETECTED", f"Explicit housing type: {filters.housing_type}")
-            self._reset_secondary_filters(filters, preserve_location=True)
             p.tenant_type = None
             p.gender = None
             p.furnished = None
@@ -190,22 +189,26 @@ class ConversationFlow:
         return True
 
     def get_housing_type_clarification(
-        self, context: SessionContext, filters: SearchFilters, result_count: int, location_name: str = ""
+        self,
+        context: SessionContext,
+        filters: SearchFilters,
+        result_count: int,
+        location_name: str = "",
+        lang: str = "ar",
     ) -> tuple[str, str]:
         location_text = location_name or filters.city or filters.governorate or ""
         if location_name:
             display_location = location_name
         else:
             display_location = filters.city or filters.governorate or ""
-        lang = context.language
         if not display_location:
             display_location = "the available areas" if lang == "en" else "المناطق المتاحة"
         clarification = t("ASK_HOUSING_TYPE", lang, count=result_count, location=display_location)
         return clarification, "housing_type"
 
-    def get_next_clarification(self, context: SessionContext, filters: SearchFilters) -> tuple[str | None, str | None]:
-        lang = context.language
-
+    def get_next_clarification(
+        self, context: SessionContext, filters: SearchFilters, lang: str = "ar"
+    ) -> tuple[str | None, str | None]:
         if not filters.search_type:
             context.last_clarification = "search_type"
             return t("ASK_SEARCH_TYPE", lang), "search_type"
@@ -234,13 +237,15 @@ class ConversationFlow:
     def get_slot_suggestions(self, slot: str | None, lang: str = "ar") -> list[QuickReply]:
         return SuggestionGenerator.get_slot_suggestions(slot, lang)
 
-    def build_result_suggestions(self, context: SessionContext, filters: SearchFilters, has_more: bool) -> list[QuickReply]:
+    def build_result_suggestions(
+        self, context: SessionContext, filters: SearchFilters, has_more: bool, lang: str = "ar"
+    ) -> list[QuickReply]:
         total_results = context.last_results_count
         return SuggestionGenerator.generate_result_suggestions(
             filters=filters,
             total_results=total_results,
             has_more=has_more,
-            lang=context.language,
+            lang=lang,
         )
 
     def build_no_results_suggestions(self, filters: SearchFilters, lang: str = "ar") -> list[QuickReply]:

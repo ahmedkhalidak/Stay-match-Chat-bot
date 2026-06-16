@@ -20,6 +20,14 @@ def detect_language(text: str) -> str:
     return "en"
 
 
+def resolve_response_language(message: str) -> str:
+    """
+    Source of truth for response language.
+    Always resolve from the current incoming user message.
+    """
+    return detect_language(message)
+
+
 def is_arabic(text: str) -> bool:
     return detect_language(text) == "ar"
 

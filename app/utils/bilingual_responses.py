@@ -4,12 +4,12 @@ BILINGUAL = {
         "en": "Welcome to StayMatch.\nWhat are you looking for?",
     },
     "ASK_LOCATION": {
-        "ar": "تمام، تحب تدور فين؟\nاكتب المدينة أو المنطقة، أو قول \"أي مكان\" لو عايز تشوف كل المتاح.",
-        "en": "Great, where would you like to search?\nEnter the city or area, or say \"anywhere\" to see all available options.",
+        "ar": "تمام، تحب تدور فين؟",
+        "en": "Great, where would you like to search?",
     },
     "ASK_PRICE": {
-        "ar": "ميزانيتك الشهرية تقريباً كام؟\nمثلاً: \"تحت 5000\" أو \"من 3000 لـ 7000\"، أو قول \"أي سعر\".",
-        "en": "What's your approximate monthly budget?\nFor example: \"under 5000\" or \"from 3000 to 7000\", or say \"any price\".",
+        "ar": "ميزانيتك الشهرية تقريباً كام؟",
+        "en": "What's your approximate monthly budget?",
     },
     "ASK_HOUSING_TYPE": {
         "ar": "لقيت {count} نتيجة في {location}.\n\nتفضل:\n🏠 شقة كاملة\n🚪 غرفة\n👥 سكن مشترك\n\nأو اكتب اعرض الكل",
@@ -32,8 +32,8 @@ BILINGUAL = {
         "en": "No previous search to go back to.",
     },
     "FALLBACK": {
-        "ar": "أقدر أساعدك تلاقي أوضة أو شقة مناسبة.\nابدأ مثلاً بـ \"أوضة\" أو \"شقة كاملة\".",
-        "en": "I can help you find a suitable room or apartment.\nStart with something like \"room\" or \"apartment\".",
+        "ar": "أقدر أساعدك تلاقي أوضة أو شقة مناسبة.",
+        "en": "I can help you find a suitable room or apartment.",
     },
     "FAQ_NO_ANSWER": {
         "ar": "مش معايا إجابة دقيقة على السؤال ده حالياً.",
@@ -90,8 +90,8 @@ BILINGUAL = {
         "en": ["Room", "Full Apartment", "Shared Housing"],
     },
     "LOCATION_SUGGESTIONS": {
-        "ar": ["المعادي", "الإسكندرية", "أي مكان"],
-        "en": ["Maadi", "Alexandria", "Anywhere"],
+        "ar": ["القاهرة", "المعادي", "الإسكندرية", "أي مكان"],
+        "en": ["Cairo", "Maadi", "Alexandria", "Anywhere"],
     },
     "PRICE_SUGGESTIONS": {
         "ar": ["تحت 3000", "تحت 5000", "تحت 10000", "أي سعر"],
@@ -102,8 +102,8 @@ BILINGUAL = {
         "en": ["🏠 Apartment", "🚪 Room", "👥 Shared", "Show All"],
     },
     "APARTMENT_SUGGESTIONS": {
-        "ar": [("الأرخص", "الأرخص"), ("مفروشة", "مفروشة"), ("فيها واي فاي", "فيها واي فاي"), ("المزيد", "المزيد")],
-        "en": [("Cheapest", "الأرخص"), ("Furnished", "مفروشة"), ("Has WiFi", "فيها واي فاي"), ("More", "المزيد")],
+        "ar": [("الأرخص", "الأرخص"), ("مفروشة", "مفروشة"), ("فيها واي فاي", "فيها واي فاي"), ("غيّر المنطقة", "أي مكان")],
+        "en": [("Cheapest", "الأرخص"), ("Furnished", "مفروشة"), ("Has WiFi", "فيها واي فاي"), ("Change Area", "anywhere")],
     },
     "SHARED_SUGGESTIONS": {
         "ar": [("للطلاب", "للطلاب"), ("للبنات", "للبنات"), ("الأرخص", "الأرخص"), ("المزيد", "المزيد")],

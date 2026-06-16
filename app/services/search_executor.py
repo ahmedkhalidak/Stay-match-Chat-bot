@@ -25,8 +25,7 @@ class SearchExecutor:
         self.formatter = formatter or ResponseFormatter()
         self.flow = flow or ConversationFlow()
 
-    def execute(self, filters: SearchFilters, context: SessionContext) -> ChatResponse:
-        lang = context.language
+    def execute(self, filters: SearchFilters, context: SessionContext, lang: str = "ar") -> ChatResponse:
         cache_key = self._filters_hash(filters)
 
         offset = context.current_offset
@@ -106,15 +105,19 @@ class SearchExecutor:
             context.push_search(filters, len(results))
 
         if filters.search_type == "room":
-            reply, cards = self.formatter.format_rooms(results, filters, has_more=has_more, page_num=page_num)
+            reply, cards = self.formatter.format_rooms(
+                results, filters, has_more=has_more, page_num=page_num, lang=lang
+            )
         else:
-            reply, cards = self.formatter.format_properties(results, filters, has_more=has_more, page_num=page_num)
+            reply, cards = self.formatter.format_properties(
+                results, filters, has_more=has_more, page_num=page_num, lang=lang
+            )
 
         return ChatResponse(
             reply=reply,
             response_type="results",
             filters=filters,
-            suggestions=self.flow.build_result_suggestions(context, filters, has_more),
+            suggestions=self.flow.build_result_suggestions(context, filters, has_more, lang=lang),
             results=cards,
             pagination=PaginationMeta(page=page_num, page_size=limit, has_more=has_more),
         )

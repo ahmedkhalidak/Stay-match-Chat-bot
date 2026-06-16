@@ -34,7 +34,7 @@ class SessionContext(BaseModel):
     last_search: Optional[SearchFilters] = None
     pending_slot: Optional[str] = None
     turn_count: int = 0
-    language: str = "ar"  # "ar" | "en" — detected from first user message
+    language: str = "ar"  # "ar" | "en" — detected from the latest user message
     conversation_history: List[MessageTurn] = Field(default_factory=list)
     last_results_count: int = 0
 

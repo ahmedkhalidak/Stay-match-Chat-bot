@@ -44,7 +44,7 @@ class MemoryStore:
         async with self._lock:
             if session_id in self._store:
                 ctx = self._store[session_id]
-                if message and not ctx.language:
+                if message:
                     ctx.language = detect_language(message)
                 return ctx
 
@@ -55,6 +55,8 @@ class MemoryStore:
                     if conversation:
                         ctx = self._reconstruct_context(conversation, session_id)
                         if ctx:
+                            if message:
+                                ctx.language = detect_language(message)
                             self._store[session_id] = ctx
                             # Evict oldest sessions if limit exceeded
                             if len(self._store) > self._max_sessions:
@@ -83,6 +85,8 @@ class MemoryStore:
         if meta_str:
             try:
                 meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+                if isinstance(meta, str):
+                    meta = json.loads(meta)
                 ctx.language = meta.get("language", "ar")
                 ctx.pending_slot = meta.get("pending_slot")
                 ctx.current_offset = meta.get("current_offset", 0)
@@ -114,7 +118,7 @@ class MemoryStore:
 
     def _create_db_session(self, session_id: str, language: str):
         try:
-            meta = json.dumps({"language": language})
+            meta = {"language": language}
             conversation_id = self.conversation_repo.create_conversation(session_id=session_id, metadata=meta)
             debug_log("MEMORY_DB", f"Session {session_id} → conversation {conversation_id}")
             self.analytics_repo.create_session(session_id)
@@ -238,7 +242,7 @@ class MemoryStore:
             self._store[session_id] = SessionContext(language=lang)
         else:
             ctx = self._store[session_id]
-            if message and not ctx.language:
+            if message:
                 ctx.language = detect_language(message)
         return self._store[session_id]
 

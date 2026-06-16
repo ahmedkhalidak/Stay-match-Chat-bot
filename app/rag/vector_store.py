@@ -1,4 +1,7 @@
 import threading
+import shutil
+import os
+from pathlib import Path
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
@@ -10,10 +13,38 @@ from app.rag.faq_loader import load_faq_documents
 from app.utils.logger import debug_log
 
 EMBED_MODEL = "intfloat/multilingual-e5-small"
+CHROMA_PATH = Path("/tmp/chromadb_staymatch")
+RAG_EMBEDDINGS_ENABLED = os.getenv("ENABLE_RAG_EMBEDDINGS", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 _client = None
 _collection = None
 _initialized = threading.Event()
+
+
+def _create_client(persistent: bool = True):
+    if persistent:
+        return chromadb.PersistentClient(
+            path=str(CHROMA_PATH),
+            settings=Settings(anonymized_telemetry=False),
+        )
+    return chromadb.Client(settings=Settings(anonymized_telemetry=False))
+
+
+def _get_or_create_collection(client, embedding_function):
+    collection = client.get_or_create_collection(
+        name="staymatch_faq",
+        embedding_function=embedding_function,
+        metadata={"hnsw:space": "cosine"},
+    )
+    # count() forces Chroma to touch its collection schema, which exposes
+    # stale persistent-cache mismatches early enough to recover cleanly.
+    collection.count()
+    return collection
 
 
 def _get_collection():
@@ -25,18 +56,6 @@ def _get_collection():
     debug_log("RAG", "Initializing ChromaDB...")
 
     try:
-        _client = chromadb.PersistentClient(
-            path="/tmp/chromadb_staymatch",
-            settings=Settings(anonymized_telemetry=False),
-        )
-        debug_log("RAG", "Using PersistentClient")
-    except Exception:
-        _client = chromadb.Client(
-            settings=Settings(anonymized_telemetry=False),
-        )
-        debug_log("RAG", "Falling back to in-memory Client")
-
-    try:
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=EMBED_MODEL
         )
@@ -46,11 +65,25 @@ def _get_collection():
         ef = embedding_functions.DefaultEmbeddingFunction()
         debug_log("RAG", "Using DefaultEmbeddingFunction")
 
-    _collection = _client.get_or_create_collection(
-        name="staymatch_faq",
-        embedding_function=ef,
-        metadata={"hnsw:space": "cosine"},
-    )
+    try:
+        _client = _create_client(persistent=True)
+        debug_log("RAG", "Using PersistentClient")
+        _collection = _get_or_create_collection(_client, ef)
+    except Exception as e:
+        if "collections.topic" in str(e):
+            debug_log("RAG_CACHE_RESET", "Stale Chroma cache detected; rebuilding persistent cache")
+            try:
+                shutil.rmtree(CHROMA_PATH, ignore_errors=True)
+                _client = _create_client(persistent=True)
+                _collection = _get_or_create_collection(_client, ef)
+            except Exception as rebuild_error:
+                debug_log("RAG_FALLBACK", f"Persistent rebuild failed: {rebuild_error}")
+                _client = _create_client(persistent=False)
+                _collection = _get_or_create_collection(_client, ef)
+        else:
+            debug_log("RAG_FALLBACK", f"Persistent Chroma failed: {e}")
+            _client = _create_client(persistent=False)
+            _collection = _get_or_create_collection(_client, ef)
 
     if _collection.count() == 0:
         _index_documents()
@@ -62,6 +95,11 @@ def _get_collection():
 
 def init_rag(blocking: bool = False):
     """Pre-initialize RAG at startup. If blocking=False, runs in background thread."""
+    if not RAG_EMBEDDINGS_ENABLED:
+        debug_log("RAG", "Embeddings disabled; using deterministic FAQ fallback only")
+        _initialized.set()
+        return
+
     def _init():
         try:
             _get_collection()
@@ -77,6 +115,9 @@ def init_rag(blocking: bool = False):
 
 def ensure_rag_ready():
     """Block until RAG is initialized (for use during warmup requests)."""
+    if not RAG_EMBEDDINGS_ENABLED:
+        _initialized.set()
+        return
     if not _initialized.is_set():
         _get_collection()
 
@@ -103,6 +144,9 @@ def _index_documents():
 
 
 def query_faq(question: str, n_results: int = 3, lang: str = "ar") -> str | None:
+    if not RAG_EMBEDDINGS_ENABLED:
+        return None
+
     try:
         debug_log("RAG_QUERY", f"Query: {question[:80]}...")
         collection = _get_collection()
