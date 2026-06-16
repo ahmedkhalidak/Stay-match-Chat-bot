@@ -39,11 +39,15 @@ app.openapi_security_schema = {
 }
 
 
+# Store original openapi method
+_original_openapi = app.openapi
+
+
 # Override OpenAPI to include custom security scheme
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    openapi_schema = app.openapi()
+    openapi_schema = _original_openapi()
     openapi_schema["components"]["securitySchemes"] = app.openapi_security_schema
     app.openapi_schema = openapi_schema
     return app.openapi_schema
