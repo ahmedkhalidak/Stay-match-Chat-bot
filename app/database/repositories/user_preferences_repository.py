@@ -6,14 +6,13 @@ Maps to the `user_preferences` table in the chatbot DB.
 import json
 from typing import Optional, Dict, Any
 from sqlalchemy import text
-from app.database.chatbot_connection import get_chatbot_engine
+from app.database.chatbot_connection import session_scope
 from app.utils.logger import debug_log
 
 
 class UserPreferencesRepository:
 
     def __init__(self):
-        self.engine = get_chatbot_engine()
         self._available: bool | None = None
 
     def _mark_unavailable_if_missing(self, error: Exception) -> bool:
@@ -32,8 +31,8 @@ class UserPreferencesRepository:
         if self._available is False:
             return False
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         INSERT INTO user_preferences
                             (user_id, min_budget, max_budget, preferred_location,
@@ -73,7 +72,6 @@ class UserPreferencesRepository:
                         "shared_room": preferences.get("shared_room"),
                     },
                 )
-                conn.commit()
                 self._available = True
                 debug_log("PREFERENCES_SAVE", f"Saved preferences for user {user_id}")
                 return True
@@ -87,8 +85,8 @@ class UserPreferencesRepository:
         if self._available is False:
             return None
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT min_budget, max_budget, preferred_location,
                                tenant_type, gender, furnished, wifi, air_conditioning,
@@ -126,12 +124,11 @@ class UserPreferencesRepository:
         if self._available is False:
             return False
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("DELETE FROM user_preferences WHERE user_id = :user_id"),
                     {"user_id": user_id},
                 )
-                conn.commit()
                 return result.rowcount > 0
         except Exception as e:
             if self._mark_unavailable_if_missing(e):

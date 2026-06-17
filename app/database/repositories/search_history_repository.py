@@ -6,14 +6,14 @@ Maps to the `search_history` table in the chatbot DB.
 import json
 from typing import Optional, List, Dict, Any
 from sqlalchemy import text
-from app.database.chatbot_connection import get_chatbot_engine
+from app.database.chatbot_connection import session_scope
 from app.utils.logger import debug_log
 
 
 class SearchHistoryRepository:
 
     def __init__(self):
-        self.engine = get_chatbot_engine()
+        pass
 
     def add_entry(
         self,
@@ -28,8 +28,8 @@ class SearchHistoryRepository:
     ) -> int:
         try:
             filters_json = json.dumps(filters) if filters else None
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         INSERT INTO search_history
                             (session_id, search_type, city, governorate,
@@ -50,7 +50,6 @@ class SearchHistoryRepository:
                         "filters": filters_json,
                     },
                 )
-                conn.commit()
                 entry_id = result.scalar()
                 debug_log("SEARCH_HISTORY_ADD", f"Entry {entry_id} for session {session_id}")
                 return entry_id
@@ -60,8 +59,8 @@ class SearchHistoryRepository:
 
     def get_session_history(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT id, session_id, search_type, city, governorate,
                                min_price, max_price, results_count, created_at, filters
@@ -93,12 +92,11 @@ class SearchHistoryRepository:
 
     def delete_session_history(self, session_id: str) -> bool:
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("DELETE FROM search_history WHERE session_id = :session_id"),
                     {"session_id": session_id},
                 )
-                conn.commit()
                 return result.rowcount > 0
         except Exception as e:
             debug_log("SEARCH_HISTORY_ERROR", f"Failed to delete history: {e}")

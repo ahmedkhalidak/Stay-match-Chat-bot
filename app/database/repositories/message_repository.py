@@ -5,7 +5,8 @@ Handles message storage and retrieval
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy import text
-from app.database.chatbot_connection import get_chatbot_engine
+from sqlalchemy.orm import Session
+from app.database.chatbot_connection import session_scope
 from app.utils.logger import debug_log
 from datetime import datetime
 
@@ -14,7 +15,7 @@ class MessageRepository:
     """Repository for messages table"""
 
     def __init__(self):
-        self.engine = get_chatbot_engine()
+        pass
 
     def add_message(
         self,
@@ -41,8 +42,8 @@ class MessageRepository:
             import json
             metadata_json = json.dumps(metadata) if metadata else None
             
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         INSERT INTO messages (conversation_id, role, content, message_type, metadata)
                         VALUES (:conversation_id, :role, :content, :message_type, :metadata)
@@ -56,7 +57,6 @@ class MessageRepository:
                         "metadata": metadata_json
                     }
                 )
-                conn.commit()
                 message_id = result.scalar()
                 debug_log("MESSAGE_ADD", f"Added message {message_id} to conversation {conversation_id}")
                 return message_id
@@ -80,8 +80,8 @@ class MessageRepository:
             List of messages
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT id, conversation_id, role, content, created_at, message_type, metadata
                         FROM messages
@@ -123,8 +123,8 @@ class MessageRepository:
             List of messages
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT m.id, m.conversation_id, m.role, m.content, m.created_at, m.message_type, m.metadata
                         FROM messages m
@@ -167,8 +167,8 @@ class MessageRepository:
             List of recent messages
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT id, conversation_id, role, content, created_at
                         FROM messages
@@ -204,12 +204,11 @@ class MessageRepository:
             True if deleted, False otherwise
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("DELETE FROM messages WHERE conversation_id = :conversation_id"),
                     {"conversation_id": conversation_id}
                 )
-                conn.commit()
                 deleted = result.rowcount > 0
                 debug_log("MESSAGE_DELETE", f"Deleted {result.rowcount} messages for conversation {conversation_id}")
                 return deleted

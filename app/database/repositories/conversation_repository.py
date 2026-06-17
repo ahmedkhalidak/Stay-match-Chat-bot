@@ -5,7 +5,8 @@ Handles conversation storage and retrieval
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy import text
-from app.database.chatbot_connection import get_chatbot_engine
+from sqlalchemy.orm import Session
+from app.database.chatbot_connection import session_scope
 from app.utils.logger import debug_log
 from datetime import datetime
 
@@ -14,7 +15,7 @@ class ConversationRepository:
     """Repository for conversations table"""
 
     def __init__(self):
-        self.engine = get_chatbot_engine()
+        pass
 
     def create_conversation(
         self,
@@ -42,8 +43,8 @@ class ConversationRepository:
             import json
             metadata_json = json.dumps(metadata) if metadata else None
             
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         INSERT INTO conversations (session_id, user_id, metadata)
                         VALUES (:session_id, :user_id, :metadata)
@@ -55,7 +56,6 @@ class ConversationRepository:
                         "metadata": metadata_json
                     }
                 )
-                conn.commit()
                 conversation_id = result.scalar()
                 debug_log("CONVERSATION_CREATE", f"Created conversation {conversation_id} for session {session_id}")
                 return conversation_id
@@ -74,8 +74,8 @@ class ConversationRepository:
             Conversation data or None
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT id, session_id, user_id, started_at, last_activity, 
                                message_count, status, metadata
@@ -112,9 +112,9 @@ class ConversationRepository:
             message_count: Optional new message count
         """
         try:
-            with self.engine.connect() as conn:
+            with session_scope() as session:
                 if message_count is not None:
-                    conn.execute(
+                    session.execute(
                         text("""
                             UPDATE conversations
                             SET last_activity = CURRENT_TIMESTAMP,
@@ -124,7 +124,7 @@ class ConversationRepository:
                         {"session_id": session_id, "message_count": message_count}
                     )
                 else:
-                    conn.execute(
+                    session.execute(
                         text("""
                             UPDATE conversations
                             SET last_activity = CURRENT_TIMESTAMP
@@ -132,7 +132,6 @@ class ConversationRepository:
                         """),
                         {"session_id": session_id}
                     )
-                conn.commit()
                 debug_log("CONVERSATION_UPDATE", f"Updated activity for session {session_id}")
         except Exception as e:
             debug_log("CONVERSATION_ERROR", f"Failed to update conversation: {str(e)}")
@@ -140,8 +139,8 @@ class ConversationRepository:
     def update_user_id(self, session_id: str, user_id: str) -> bool:
         """Link a user_id to an existing conversation."""
         try:
-            with self.engine.connect() as conn:
-                conn.execute(
+            with session_scope() as session:
+                session.execute(
                     text("""
                         UPDATE conversations
                         SET user_id = :user_id
@@ -149,7 +148,6 @@ class ConversationRepository:
                     """),
                     {"session_id": session_id, "user_id": user_id},
                 )
-                conn.commit()
                 debug_log("CONVERSATION_UPDATE", f"Linked user {user_id} to session {session_id}")
                 return True
         except Exception as e:
@@ -161,8 +159,8 @@ class ConversationRepository:
         try:
             import json
             meta_json = json.dumps(metadata)
-            with self.engine.connect() as conn:
-                conn.execute(
+            with session_scope() as session:
+                session.execute(
                     text("""
                         UPDATE conversations
                         SET metadata = :metadata
@@ -170,7 +168,6 @@ class ConversationRepository:
                     """),
                     {"session_id": session_id, "metadata": meta_json},
                 )
-                conn.commit()
                 return True
         except Exception as e:
             debug_log("CONVERSATION_ERROR", f"Failed to update metadata: {e}")
@@ -184,8 +181,8 @@ class ConversationRepository:
             session_id: Session identifier
         """
         try:
-            with self.engine.connect() as conn:
-                conn.execute(
+            with session_scope() as session:
+                session.execute(
                     text("""
                         UPDATE conversations
                         SET message_count = message_count + 1,
@@ -194,7 +191,6 @@ class ConversationRepository:
                     """),
                     {"session_id": session_id}
                 )
-                conn.commit()
         except Exception as e:
             debug_log("CONVERSATION_ERROR", f"Failed to increment message count: {str(e)}")
 
@@ -209,12 +205,11 @@ class ConversationRepository:
             True if deleted, False otherwise
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("DELETE FROM conversations WHERE session_id = :session_id"),
                     {"session_id": session_id}
                 )
-                conn.commit()
                 deleted = result.rowcount > 0
                 debug_log("CONVERSATION_DELETE", f"Deleted conversation for session {session_id}: {deleted}")
                 return deleted
@@ -234,8 +229,8 @@ class ConversationRepository:
             List of conversations
         """
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(
+            with session_scope() as session:
+                result = session.execute(
                     text("""
                         SELECT id, session_id, user_id, started_at, last_activity,
                                message_count, status

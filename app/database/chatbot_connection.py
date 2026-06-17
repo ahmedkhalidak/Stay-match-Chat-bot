@@ -4,7 +4,8 @@ Separate connection for chatbot database (conversations, messages, etc.)
 """
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+from contextlib import contextmanager
 from app.core.config import Settings
 from app.utils.logger import debug_log
 
@@ -51,6 +52,20 @@ def get_chatbot_session():
         engine = get_chatbot_engine()
         _chatbot_session_factory = sessionmaker(bind=engine)
     return _chatbot_session_factory()
+
+
+@contextmanager
+def session_scope():
+    """Provide a transactional scope around a series of operations."""
+    session = get_chatbot_session()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def test_chatbot_connection():
