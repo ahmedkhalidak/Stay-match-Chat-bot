@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
 
     groq_api_key: str
-
+    gemini_api_key: str | None = None
     recommendation_service_url: str | None = None
 
     db_host: str
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     chatbot_db_name: str | None = None
     chatbot_db_user: str | None = None
     chatbot_db_password: str | None = None
-
+    
     # JWT Authentication configuration
     jwt_secret: str = ""
     jwt_issuer: str = ""

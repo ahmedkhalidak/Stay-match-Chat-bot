@@ -218,7 +218,7 @@ class SearchService:
 
         if intent == "small_talk":
             response = ChatResponse(
-                reply=self.chat.generate_reply(message, lang),
+                reply=await self.chat.generate_reply(message, lang),
                 response_type="small_talk",
             )
             return await self._finish_response(session_id, context, response, started_at, intent)
