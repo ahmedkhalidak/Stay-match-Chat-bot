@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from app.core.memory_store import memory_store
@@ -43,9 +44,29 @@ class SearchService:
     def property_repo(self, repository):
         self.search_executor.property_repo = repository
 
-    def _bg_save(self, session_id: str, context: SessionContext):
-        """Fire-and-forget DB persistence — doesn't block the response."""
-        memory_store._sync_to_db(session_id, context)
+    async def _bg_save(self, session_id: str, context: SessionContext, retry_count: int = 3):
+        """Fire-and-forget DB persistence — doesn't block the response with retry logic."""
+        for attempt in range(retry_count):
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(memory_store._sync_to_db, session_id, context),
+                    timeout=5.0
+                )
+                return  # Success
+            except asyncio.TimeoutError:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("BG_SAVE_RETRY", f"Attempt {attempt+1} timed out, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("BG_SAVE_TIMEOUT", f"DB sync timed out after {retry_count} attempts for session {session_id}")
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("BG_SAVE_RETRY", f"Attempt {attempt+1} failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("BG_SAVE_ERROR", f"Failed after {retry_count} attempts: {e}")
 
     def _log_response_timing(self, session_id: str, intent: str, response: ChatResponse, started_at: float):
         duration_ms = int((time.perf_counter() - started_at) * 1000)
@@ -63,7 +84,7 @@ class SearchService:
         intent: str,
     ) -> ChatResponse:
         await memory_store.store_message(session_id, "assistant", response.reply, context)
-        self._bg_save(session_id, context)
+        await self._bg_save(session_id, context)
         self._log_response_timing(session_id, intent, response, started_at)
         return response
 

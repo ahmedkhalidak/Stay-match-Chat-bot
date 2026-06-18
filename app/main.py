@@ -22,7 +22,24 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     yield
-    # Shutdown: nothing to clean up
+    # Shutdown: wait for background tasks to complete gracefully
+    import asyncio
+    try:
+        # Cancel all background tasks except current
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        logger.info(f"Shutting down: waiting for {len(tasks)} background tasks...")
+        
+        # Wait for tasks to complete with timeout
+        if tasks:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=10.0
+            )
+        logger.info("Shutdown complete: all background tasks finished")
+    except asyncio.TimeoutError:
+        logger.warning("Shutdown timeout: some tasks may not have completed gracefully")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
 
 
 app = FastAPI(

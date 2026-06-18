@@ -174,21 +174,80 @@ class MemoryStore:
             "user_preferences": context.user_preferences.model_dump() if context.user_preferences else None,
         }
 
+    async def _store_message_in_db(self, session_id: str, role: str, content: str, context: SessionContext, retry_count: int = 3):
+        """Store message in database asynchronously in background with retry logic."""
+        for attempt in range(retry_count):
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._store_message_in_db_sync, session_id, role, content, context),
+                    timeout=5.0
+                )
+                return  # Success
+            except asyncio.TimeoutError:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Attempt {attempt+1} timed out, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_TIMEOUT", f"DB operation timed out after {retry_count} attempts for session {session_id}")
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Attempt {attempt+1} failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_ERROR", f"Failed after {retry_count} attempts: {e}")
+
+    def _store_message_in_db_sync(self, session_id: str, role: str, content: str, context: SessionContext):
+        """Synchronous DB write for message storage (called in background thread)."""
+        conversation = self.conversation_repo.get_conversation_by_session(session_id)
+        if conversation:
+            self.message_repo.add_message(
+                conversation_id=conversation["id"], role=role, content=content,
+            )
+            self.conversation_repo.increment_message_count(session_id)
+            self.analytics_repo.increment_messages(session_id)
+
     async def store_message(self, session_id: str, role: str, content: str, context: SessionContext):
         context.add_message(role, content)
         await self.update_context(session_id, context)
 
         if self.use_database:
+            asyncio.create_task(self._store_message_in_db(session_id, role, content, context))
+
+    async def _store_messages_batch_in_db(self, session_id: str, turns: list, context: SessionContext, retry_count: int = 3):
+        """Store multiple messages in database asynchronously in background with retry logic."""
+        for attempt in range(retry_count):
             try:
-                conversation = self.conversation_repo.get_conversation_by_session(session_id)
-                if conversation:
-                    self.message_repo.add_message(
-                        conversation_id=conversation["id"], role=role, content=content,
-                    )
-                    self.conversation_repo.increment_message_count(session_id)
-                    self.analytics_repo.increment_messages(session_id)
-            except Exception:
-                pass
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._store_messages_batch_in_db_sync, session_id, turns, context),
+                    timeout=5.0
+                )
+                return  # Success
+            except asyncio.TimeoutError:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Batch attempt {attempt+1} timed out, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_TIMEOUT", f"Batch DB operation timed out after {retry_count} attempts for session {session_id}")
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Batch attempt {attempt+1} failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_ERROR", f"Batch failed after {retry_count} attempts: {e}")
+
+    def _store_messages_batch_in_db_sync(self, session_id: str, turns: list, context: SessionContext):
+        """Synchronous DB write for batch message storage (called in background thread)."""
+        conversation = self.conversation_repo.get_conversation_by_session(session_id)
+        if conversation:
+            conv_id = conversation["id"]
+            for role, content in turns:
+                self.message_repo.add_message(conversation_id=conv_id, role=role, content=content)
+                self.conversation_repo.increment_message_count(session_id)
+                self.analytics_repo.increment_messages(session_id)
 
     async def store_messages_batch(self, session_id: str, turns: list, context: SessionContext):
         """Store multiple message turns in a single DB call pattern."""
@@ -197,40 +256,81 @@ class MemoryStore:
         await self.update_context(session_id, context)
 
         if self.use_database:
+            asyncio.create_task(self._store_messages_batch_in_db(session_id, turns, context))
+
+    async def _record_search_in_db(self, session_id: str, context: SessionContext, search_type: str, results_count: int, filters: dict, retry_count: int = 3):
+        """Record search in database asynchronously in background with retry logic."""
+        for attempt in range(retry_count):
             try:
-                conversation = self.conversation_repo.get_conversation_by_session(session_id)
-                if conversation:
-                    conv_id = conversation["id"]
-                    for role, content in turns:
-                        self.message_repo.add_message(conversation_id=conv_id, role=role, content=content)
-                        self.conversation_repo.increment_message_count(session_id)
-                        self.analytics_repo.increment_messages(session_id)
-            except Exception:
-                pass
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._record_search_in_db_sync, session_id, context, search_type, results_count, filters),
+                    timeout=5.0
+                )
+                return  # Success
+            except asyncio.TimeoutError:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Search record attempt {attempt+1} timed out, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_TIMEOUT", f"Search record timed out after {retry_count} attempts for session {session_id}")
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Search record attempt {attempt+1} failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_ERROR", f"Search record failed after {retry_count} attempts: {e}")
+
+    def _record_search_in_db_sync(self, session_id: str, context: SessionContext, search_type: str, results_count: int, filters: dict):
+        """Synchronous DB write for search recording (called in background thread)."""
+        self.search_history_repo.add_entry(
+            session_id=session_id, search_type=search_type, results_count=results_count,
+            city=filters.get("city"), governorate=filters.get("governorate"),
+            min_price=filters.get("min_price"), max_price=filters.get("max_price"), filters=filters,
+        )
+        self.analytics_repo.increment_searches(session_id)
+        if results_count == 0:
+            self.analytics_repo.increment_no_results(session_id)
 
     async def record_search(self, session_id: str, context: SessionContext, search_type: str, results_count: int, filters: dict):
         if self.use_database:
+            asyncio.create_task(self._record_search_in_db(session_id, context, search_type, results_count, filters))
+
+    async def _clear_context_in_db(self, session_id: str, retry_count: int = 3):
+        """Clear context in database asynchronously in background with retry logic."""
+        for attempt in range(retry_count):
             try:
-                self.search_history_repo.add_entry(
-                    session_id=session_id, search_type=search_type, results_count=results_count,
-                    city=filters.get("city"), governorate=filters.get("governorate"),
-                    min_price=filters.get("min_price"), max_price=filters.get("max_price"), filters=filters,
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._clear_context_in_db_sync, session_id),
+                    timeout=5.0
                 )
-                self.analytics_repo.increment_searches(session_id)
-                if results_count == 0:
-                    self.analytics_repo.increment_no_results(session_id)
-            except Exception:
-                pass
+                return  # Success
+            except asyncio.TimeoutError:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Clear context attempt {attempt+1} timed out, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_TIMEOUT", f"Clear context timed out after {retry_count} attempts for session {session_id}")
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    debug_log("DB_STORE_RETRY", f"Clear context attempt {attempt+1} failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    debug_log("DB_STORE_ERROR", f"Clear context failed after {retry_count} attempts: {e}")
+
+    def _clear_context_in_db_sync(self, session_id: str):
+        """Synchronous DB write for context clearing (called in background thread)."""
+        self.analytics_repo.end_session(session_id)
+        self.conversation_repo.delete_conversation(session_id)
 
     async def clear_context(self, session_id: str):
         async with self._lock:
             self._store.pop(session_id, None)
             if self.use_database:
-                try:
-                    self.analytics_repo.end_session(session_id)
-                    self.conversation_repo.delete_conversation(session_id)
-                except Exception:
-                    pass
+                asyncio.create_task(self._clear_context_in_db(session_id))
 
     async def active_sessions(self) -> int:
         async with self._lock:
