@@ -44,11 +44,22 @@ INTENT_KEYWORDS = {
         "how are you", "how's it going",
     ],
     "faq": [
-        "ازاي", "ايه", "مين", "هل", "عندك", "بتعمل", "فلوس",
-        "دفع", "امان", "سعر", "رسوم", "تكلفة", "مصاريف",
-        "how", "what", "who", "do you", "how much", "cost",
-        "fee", "fees", "payment", "safe", "secure", "insurance",
-        "why", "when", "where", "tell me",
+        # كلمات الاستفهام الأساسية
+        "ازاي", "إزاي", "ازاى", "ايه", "مين", "هل", "عندك",
+        "how", "what", "who", "do you", "why", "when", "where",
+        "tell me", "how to", "i want to know",
+
+        # كلمات إجرائية (للاكتشاف الدقيق للأسئلة)
+        "أضيف", "اضيف", "أنشر", "انشر", "ارفع", "رفع",
+        "أسجل", "سجل", "احذف", "حذف", "غير", "عدل",
+        "اطلع", "اعرف", "عايز اعرف", "عاوز اعرف",
+        "add", "post", "upload", "create", "register",
+        "delete", "change", "edit", "know", "learn",
+
+        # كلمات متعلقة بالخدمة
+        "بتعمل", "فلوس", "دفع", "امان", "سعر", "رسوم",
+        "تكلفة", "مصاريف", "fee", "fees", "payment",
+        "safe", "secure", "insurance", "cost",
     ],
 }
 
@@ -166,4 +177,13 @@ NEGATION_WORDS = {
     "مش", "غير", "بدون",
     "without", "no", "not", "don't", "dont",
     "لا", "لأ",
+}
+
+# Action keywords for FAQ intent detection
+# These help distinguish procedural questions from search queries
+ACTION_KEYWORDS = {
+    "add": ["أضيف", "اضيف", "أنشر", "انشر", "ارفع", "رفع", "add", "post", "upload"],
+    "delete": ["احذف", "حذف", "شيل", "delete", "remove"],
+    "edit": ["غير", "عدل", "تعديل", "edit", "change"],
+    "learn": ["اعرف", "اطلع", "عايز اعرف", "know", "learn", "tell me"],
 }

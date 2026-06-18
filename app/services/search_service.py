@@ -11,7 +11,7 @@ from app.services.search_executor import SearchExecutor
 from app.utils.logger import debug_log
 from app.utils.bilingual_responses import t
 from app.utils.language_detector import resolve_response_language
-from app.services.rag_service import RagService
+from app.services.faq_service import FaqService
 from app.services.recommendation_client import (
     get_recommendation_scores, get_room_recommendation_scores,
     send_interaction, trigger_preferences_sync
@@ -22,7 +22,7 @@ class SearchService:
 
     def __init__(self):
         self.nlp_pipeline = NLPPipeline()
-        self.rag = RagService()
+        self.faq = FaqService()
         self.chat = ChatService()
         self.flow = ConversationFlow()
         self.search_executor = SearchExecutor(flow=self.flow)
@@ -224,14 +224,14 @@ class SearchService:
             return await self._finish_response(session_id, context, response, started_at, intent)
 
         if intent == "faq":
-            answer = self.rag.answer(message, lang=lang)
+            answer = await self.faq.answer(message)
             if not answer:
                 answer = t("FAQ_NO_ANSWER", lang)
             response = ChatResponse(reply=answer, response_type="faq")
             return await self._finish_response(session_id, context, response, started_at, intent)
 
         if intent == "invalid":
-            answer = self.rag.answer(message, lang=lang)
+            answer = await self.faq.answer(message)
             if answer:
                 response = ChatResponse(reply=answer, response_type="faq")
             else:

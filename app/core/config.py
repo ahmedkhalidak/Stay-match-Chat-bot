@@ -24,11 +24,19 @@ class Settings(BaseSettings):
     chatbot_db_name: str | None = None
     chatbot_db_user: str | None = None
     chatbot_db_password: str | None = None
-    
+
     # JWT Authentication configuration
     jwt_secret: str = ""
     jwt_issuer: str = ""
     jwt_audience: str = ""
+
+    # Gemini FAQ settings
+    enable_gemini_faq: bool = True
+    gemini_daily_limit: int = 1000
+    gemini_cache_ttl_seconds: int = 3600
+    gemini_max_tokens: int = 150
+    gemini_timeout_seconds: int = 10
+    max_question_length: int = 200
 
     @property
     def db_url(self):

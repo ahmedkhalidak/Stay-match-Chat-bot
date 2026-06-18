@@ -5,6 +5,7 @@ NLPPipeline — المحرك الرئيسي للـ NLP
 from app.nlp.parsed_message import ParsedMessage, LocationResult, PriceResult
 from app.nlp.token_map import TOKEN_MAP
 from app.nlp.lexicon import (
+    ACTION_KEYWORDS,
     AMENITY_KEYWORDS,
     FULL_KEYWORDS,
     GENDER_KEYWORDS,
@@ -195,6 +196,24 @@ class NLPPipeline:
                     score += 0.8
             if score > 0:
                 intent_scores[intent] = score
+
+        # Prioritize faq when action keywords are present with property_search keywords
+        if "faq" in intent_scores and "property_search" in intent_scores:
+            # Check if any action keywords are present
+            has_action_keyword = False
+            for action_type, action_keywords in ACTION_KEYWORDS.items():
+                for kw in action_keywords:
+                    normalized_kw = TextNormalizer.normalize(kw)
+                    if normalized_kw in words or normalized_kw in text:
+                        has_action_keyword = True
+                        break
+                if has_action_keyword:
+                    break
+
+            if has_action_keyword:
+                # Boost faq score to prioritize it over property_search
+                intent_scores["faq"] = intent_scores["faq"] + 1.5
+                debug_log("INTENT_ACTION_BOOST", "FAQ intent boosted due to action keywords")
 
         if intent_scores:
             best_intent = max(intent_scores, key=intent_scores.get)
@@ -419,6 +438,11 @@ class NLPPipeline:
                 
     def _determine_search_type(self, parsed: ParsedMessage):
         """بيحدد نوع البحث"""
+        # Prevent changing intent if it's already faq
+        if parsed.intent == "faq":
+            debug_log("DETERMINE_SEARCH_TYPE", "Skipping search_type detection because intent is faq")
+            return
+
         text = parsed.normalized_text
 
         has_room_noun = any(

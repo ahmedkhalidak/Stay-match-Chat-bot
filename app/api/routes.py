@@ -3,12 +3,14 @@ from sqlalchemy import text
 from app.models.chat_models import ChatRequest
 from app.models.response_models import ChatResponse
 from app.services.search_service import SearchService
+from app.services.faq_service import FaqService
 from app.database.connection import engine as property_engine
 from app.database.chatbot_connection import get_chatbot_engine
 from app.core.security import get_current_user
 
 router = APIRouter()
 search_service = SearchService()
+faq_service = FaqService()
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -27,14 +29,14 @@ async def debug_db_status():
     chatbot_db_status = "connected"
     property_engine_type = "mssql"
     chatbot_engine_type = "postgresql"
-    
+
     # Test property database connection
     try:
         with property_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as e:
         property_db_status = f"error: {str(e)}"
-    
+
     # Test chatbot database connection
     try:
         chatbot_engine = get_chatbot_engine()
@@ -42,10 +44,27 @@ async def debug_db_status():
             conn.execute(text("SELECT 1"))
     except Exception as e:
         chatbot_db_status = f"error: {str(e)}"
-    
+
     return {
         "property_db": property_db_status,
         "chatbot_db": chatbot_db_status,
         "property_engine": property_engine_type,
         "chatbot_engine": chatbot_engine_type
     }
+
+
+# Admin API endpoints for FAQ management
+@router.post("/admin/faq/reload")
+async def reload_faq(current_user: get_current_user = Depends(get_current_user)):
+    """Reload knowledge_base.json without restarting the service."""
+    try:
+        faq_service.knowledge_service.reload()
+        return {"status": "success", "message": "Knowledge base reloaded successfully"}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to reload: {str(e)}"}
+
+
+@router.get("/admin/faq/stats")
+async def get_faq_stats(current_user: get_current_user = Depends(get_current_user)):
+    """Get FAQ service statistics."""
+    return faq_service.get_stats()
