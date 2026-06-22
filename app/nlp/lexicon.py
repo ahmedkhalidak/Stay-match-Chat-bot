@@ -60,6 +60,21 @@ INTENT_KEYWORDS = {
         "بتعمل", "فلوس", "دفع", "امان", "سعر", "رسوم",
         "تكلفة", "مصاريف", "fee", "fees", "payment",
         "safe", "secure", "insurance", "cost",
+
+        # كلمات متعلقة بإضافة العقارات (hosting)
+        "أضيف عقار", "اضيف عقار", "أنشر عقار", "انشر عقار",
+        "أصير هوست", "اصير هوست", "become host", "list property",
+        "معلومات العقار", "property information", "تفاصيل العقار",
+        "غرف مشتركة", "shared rooms", "غرفة مفردة", "private room",
+        "نشر العقار", "publish property", "موافقة الأدمن", "admin approval",
+        "مراجعة العقار", "property review", "قائمة العقارات", "property listing",
+
+        # كلمات متعلقة بحجز الشقق (booking)
+        "كيف أحجز", "how to book", "احجز شقة", "book apartment",
+        "طلب حجز", "booking request", "حالة الحجز", "booking status",
+        "موافقة الحجز", "booking approval", "رفض الحجز", "booking rejection",
+        "تفاصيل الشقة", "apartment details", "ملف المالك", "host profile",
+        "فلتر البحث", "search filters", "تتبع الحجز", "track booking",
     ],
 }
 

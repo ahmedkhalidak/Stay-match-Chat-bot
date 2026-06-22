@@ -250,5 +250,181 @@
       ],
       "priority": "medium"
     }
+  ],
+  "hosting": [
+    {
+      "question": "How do I add a property",
+      "question_en": "How do I add a property",
+      "answer": "You can add a property by selecting 'Add Property' and choosing between listing a whole apartment or individual rooms in a shared apartment. This allows you to become a host and list your property for rent.",
+      "answer_en": "You can add a property by selecting 'Add Property' and choosing between listing a whole apartment or individual rooms in a shared apartment. This allows you to become a host and list your property for rent.",
+      "keywords": [
+        "how",
+        "add property",
+        "host",
+        "list property",
+        "rent",
+        "apartment",
+        "rooms",
+        "become host",
+        "listing"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "What information do I need to provide for my property",
+      "question_en": "What information do I need to provide for my property",
+      "answer": "You need to provide property name, address, rental price, description, available amenities, rental availability, and property images. This information helps potential tenants evaluate your property before booking.",
+      "answer_en": "You need to provide property name, address, rental price, description, available amenities, rental availability, and property images. This information helps potential tenants evaluate your property before booking.",
+      "keywords": [
+        "what",
+        "property information",
+        "details",
+        "price",
+        "address",
+        "amenities",
+        "images",
+        "required",
+        "provide",
+        "submit"
+      ],
+      "priority": "high"
+    },
+    {
+      "question": "How do I add rooms in a shared apartment",
+      "question_en": "How do I add rooms in a shared apartment",
+      "answer": "If you choose to list individual rooms, each room is added separately. For every room, specify room type, capacity, price, furniture, availability, and room images. The apartment information is shared across all rooms to avoid duplication.",
+      "answer_en": "If you choose to list individual rooms, each room is added separately. For every room, specify room type, capacity, price, furniture, availability, and room images. The apartment information is shared across all rooms to avoid duplication.",
+      "keywords": [
+        "how",
+        "rooms",
+        "shared apartment",
+        "room details",
+        "capacity",
+        "furniture",
+        "individual rooms",
+        "list rooms"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "How do I find an apartment",
+      "question_en": "When will my property be published",
+      "answer": "After submitting your property, it is not published immediately. It is sent to the administrator for review. Only approved listings become visible to other users, ensuring platform quality and preventing fake listings.",
+      "answer_en": "After submitting your property, it is not published immediately. It is sent to the administrator for review. Only approved listings become visible to other users, ensuring platform quality and preventing fake listings.",
+      "keywords": [
+        "when",
+        "publish",
+        "approval",
+        "admin",
+        "review",
+        "listing",
+        "visible",
+        "approved"
+      ],
+      "priority": "medium"
+    }
+  ],
+  "booking": [
+    {
+      "question": "How do I find an apartment",
+      "question_en": "How do I find an apartment",
+      "answer": "Start by selecting 'Discover Apartments' from the Home page. You can use intelligent filters to search for apartments based on location, move-in date, and number of people who will live there.",
+      "answer_en": "Start by selecting 'Discover Apartments' from the Home page. You can use intelligent filters to search for apartments based on location, move-in date, and number of people who will live there.",
+      "keywords": [
+        "how",
+        "find apartment",
+        "search",
+        "discover",
+        "filters",
+        "look for",
+        "where"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "What filters can I use to search for apartments",
+      "question_en": "What filters can I use to search for apartments",
+      "answer": "You can filter by location/city, move-in date or rental period, and number of people (individuals, couples, families, or groups). These filters help the system recommend apartments that best match your needs.",
+      "answer_en": "You can filter by location/city, move-in date or rental period, and number of people (individuals, couples, families, or groups). These filters help the system recommend apartments that best match your needs.",
+      "keywords": [
+        "what",
+        "filters",
+        "location",
+        "date",
+        "people",
+        "search criteria",
+        "options"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "What information is shown on apartment details",
+      "question_en": "What information is shown on apartment details",
+      "answer": "The Apartment Details page shows apartment images, description, amenities, nearby services, location, and price. You can also access the Host Profile from this page to evaluate the property owner.",
+      "answer_en": "The Apartment Details page shows apartment images, description, amenities, nearby services, location, and price. You can also access the Host Profile from this page to evaluate the property owner.",
+      "keywords": [
+        "what",
+        "apartment details",
+        "images",
+        "amenities",
+        "location",
+        "price",
+        "information",
+        "shown"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "What information is shown on host profile",
+      "question_en": "What information is shown on host profile",
+      "answer": "The Host Profile displays verification status, reviews, ratings, listed apartments, and listed rooms. This helps you evaluate the property owner before booking.",
+      "answer_en": "The Host Profile displays verification status, reviews, ratings, listed apartments, and listed rooms. This helps you evaluate the property owner before booking.",
+      "keywords": [
+        "what",
+        "host profile",
+        "verification",
+        "reviews",
+        "ratings",
+        "host",
+        "information",
+        "shown"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "How do I submit a booking request",
+      "question_en": "How do I submit a booking request",
+      "answer": "If the apartment matches your requirements, you can submit a booking request. You may include an optional message to the host. The host will then decide to accept or reject the booking through the Booking Request page.",
+      "answer_en": "If the apartment matches your requirements, you can submit a booking request. You may include an optional message to the host. The host will then decide to accept or reject the booking through the Booking Request page.",
+      "keywords": [
+        "how",
+        "booking request",
+        "submit",
+        "host",
+        "accept",
+        "reject",
+        "book",
+        "reserve"
+      ],
+      "priority": "medium"
+    },
+    {
+      "question": "How can I track my booking status",
+      "question_en": "How can I track my booking status",
+      "answer": "You receive a notification when the host responds to your booking request. You can also check the My Booking page to see the status of your booking requests: Approved, Pending, Rejected, Completed, or Canceled.",
+      "answer_en": "You receive a notification when the host responds to your booking request. You can also check the My Booking page to see the status of your booking requests: Approved, Pending, Rejected, Completed, or Canceled.",
+      "keywords": [
+        "how",
+        "booking status",
+        "track",
+        "approved",
+        "pending",
+        "rejected",
+        "completed",
+        "canceled",
+        "check"
+      ],
+      "priority": "medium"
+    }
   ]
 }
