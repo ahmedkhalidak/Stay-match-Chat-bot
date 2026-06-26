@@ -20,12 +20,19 @@ def detect_language(text: str) -> str:
     return "en"
 
 
-def resolve_response_language(message: str) -> str:
+def resolve_response_language(message: str, context_lang: str = "ar") -> str:
     """
     Source of truth for response language.
-    Always resolve from the current incoming user message.
+    Resolves from the current incoming user message, but falls back to context language
+    if the message has no clear language (e.g., just numbers).
     """
-    return detect_language(message)
+    detected = detect_language(message)
+    # If message has no alphabetic characters, maintain the conversation language
+    total_chars = len([c for c in message.strip() if c.isalpha()])
+    if total_chars == 0:
+        return context_lang
+    # Always use detected language for messages with alphabetic characters
+    return detected
 
 
 def is_arabic(text: str) -> bool:

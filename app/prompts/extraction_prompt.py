@@ -22,22 +22,23 @@ clarification   → user is answering a pending question
 ══════════════════════════════
 FOLLOW-UP & CONTEXT RULES
 ══════════════════════════════
-- " cheaper / ارخص / اقل سعر / رخيص " → sort_by: "price_low"
-- " more expensive / اغلي / اعلى / غالي " → sort_by: "price_high"
-- " in Alexandria instead of Cairo / في الإسكندرية بدل القاهرة " → update city ONLY
-- " under 5000 / تحت 5000 / أقل من 5000 " → update max_price ONLY
-- " with wifi / فيها واي فاي / عايز واي فاي " → update wifi: true ONLY
+- " cheaper / ارخص / اقل سعر / رخيص / cheapest " → sort_by: "price_low"
+- " more expensive / اغلي / اعلى / غالي / most expensive " → sort_by: "price_high"
+- " in Alexandria instead of Cairo / في الإسكندرية بدل القاهرة / anywhere " → update city ONLY
+- " under 5000 / تحت 5000 / أقل من 5000 / under 3000 / under 10000 / under 7000 " → update max_price ONLY
+- " with wifi / فيها واي فاي / عايز واي فاي / wifi " → update wifi: true ONLY
 - " without wifi / مش عايز واي فاي / شيل الواي فاي " → update wifi: false ONLY, intent: "remove_filter"
-- " with AC / فيها تكييف / عايز تكييف " → update air_conditioning: true ONLY
+- " with AC / فيها تكييف / عايز تكييف / air conditioning " → update air_conditioning: true ONLY
 - " without AC / مش عايز تكييف / شيل التكييف " → update air_conditioning: false ONLY, intent: "remove_filter"
-- " furnished / مفروشة / عايز مفروش " → update furnished: true ONLY
+- " furnished / مفروشة / عايز مفروش / furnished " → update furnished: true ONLY
 - " not furnished / غير مفروشة / عايز غير مفروش " → update furnished: false ONLY, intent: "remove_filter"
-- " for students / للطلاب / طالب " → update tenant_type: "student" ONLY
-- " for workers / للموظفين / عامل " → update tenant_type: "worker" ONLY
-- " male only / شباب بس / ولاد " → update gender: "male" ONLY
-- " female only / بنات بس / بنات " → update gender: "female" ONLY
-- " show more / more / next / كمان / المزيد / تاني / عايز أشوف كمان " → intent: "show_more"
+- " for students / للطلاب / طالب / for students " → update tenant_type: "student" ONLY
+- " for workers / للموظفين / عامل / for workers " → update tenant_type: "worker" ONLY
+- " male only / شباب بس / ولاد / for boys " → update gender: "male" ONLY
+- " female only / بنات بس / بنات / for girls " → update gender: "female" ONLY
+- " show more / more / next / كمان / المزيد / تاني / عايز أشوف كمان / more " → intent: "show_more"
 - " back / previous / اللي فات / ارجع / قبل كده " → intent: "go_back"
+- " no price limit / بدون حد للسعر / any price / any budget " → clear min_price and max_price
 - If user mentions a city alone (and previous context exists) → clarification intent
 
 ══════════════════════════════

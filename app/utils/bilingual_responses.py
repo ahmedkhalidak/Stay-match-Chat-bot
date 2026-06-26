@@ -103,43 +103,43 @@ BILINGUAL = {
     },
     "APARTMENT_SUGGESTIONS": {
         "ar": [("الأرخص", "الأرخص"), ("مفروشة", "مفروشة"), ("فيها واي فاي", "فيها واي فاي"), ("غيّر المنطقة", "أي مكان")],
-        "en": [("Cheapest", "الأرخص"), ("Furnished", "مفروشة"), ("Has WiFi", "فيها واي فاي"), ("Change Area", "anywhere")],
+        "en": [("Cheapest", "cheapest"), ("Furnished", "furnished"), ("Has WiFi", "wifi"), ("Change Area", "anywhere")],
     },
     "SHARED_SUGGESTIONS": {
         "ar": [("للطلاب", "للطلاب"), ("للبنات", "للبنات"), ("الأرخص", "الأرخص"), ("المزيد", "المزيد")],
-        "en": [("For Students", "للطلاب"), ("For Girls", "للبنات"), ("Cheapest", "الأرخص"), ("More", "المزيد")],
+        "en": [("For Students", "for students"), ("For Girls", "for girls"), ("Cheapest", "cheapest"), ("More", "more")],
     },
     "ROOM_SUGGESTIONS": {
         "ar": [("حمام خاص", "حمام خاص"), ("مفروشة", "مفروشة"), ("غرفة خاصة", "غرفة خاصة"), ("المزيد", "المزيد")],
-        "en": [("Private Bathroom", "حمام خاص"), ("Furnished", "مفروشة"), ("Single Room", "غرفة خاصة"), ("More", "المزيد")],
+        "en": [("Private Bathroom", "private bathroom"), ("Furnished", "furnished"), ("Single Room", "single room"), ("More", "more")],
     },
     "LARGE_RESULT": {
         "ar": [("الأرخص", "الأرخص"), ("الأحدث", "الأحدث"), ("مفروشة", "مفروشة"), ("تحت 10000", "تحت 10000")],
-        "en": [("Cheapest", "الأرخص"), ("Newest", "الأحدث"), ("Furnished", "مفروشة"), ("Under 10000", "تحت 10000")],
+        "en": [("Cheapest", "cheapest"), ("Newest", "newest"), ("Furnished", "furnished"), ("Under 10000", "under 10000")],
     },
     "SMALL_RESULT": {
         "ar": [("أي مكان", "أي مكان"), ("بدون حد للسعر", "بدون حد للسعر"), ("شقة كاملة", "شقة كاملة"), ("سكن مشترك", "سكن مشترك")],
-        "en": [("Anywhere", "أي مكان"), ("No Price Limit", "بدون حد للسعر"), ("Apartment", "شقة كاملة"), ("Shared Housing", "سكن مشترك")],
+        "en": [("Anywhere", "anywhere"), ("No Price Limit", "no price limit"), ("Apartment", "apartment"), ("Shared Housing", "shared")],
     },
     "NO_RESULTS_RECOVERY": {
         "ar": [("أي مكان", "أي مكان"), ("بدون حد للسعر", "بدون حد للسعر"), ("شقة كاملة", "شقة كاملة"), ("سكن مشترك", "سكن مشترك")],
-        "en": [("Anywhere", "أي مكان"), ("No Price Limit", "بدون حد للسعر"), ("Apartment", "شقة كاملة"), ("Shared Housing", "سكن مشترك")],
+        "en": [("Anywhere", "anywhere"), ("No Price Limit", "no price limit"), ("Apartment", "apartment"), ("Shared Housing", "shared")],
     },
     "BUDGET_RECOVERY": {
         "ar": [("حتى 7000", "تحت 7000"), ("أي سعر", "بدون حد للسعر"), ("سكن مشترك", "شقة مشتركة"), ("غرفة", "غرفة")],
-        "en": [("Up to 7000", "تحت 7000"), ("Any Price", "بدون حد للسعر"), ("Shared Housing", "شقة مشتركة"), ("Room", "غرفة")],
+        "en": [("Up to 7000", "under 7000"), ("Any Price", "any price"), ("Shared Housing", "shared"), ("Room", "room")],
     },
     "FOLLOWUP_APARTMENT": {
         "ar": [("الأرخص", "الأرخص"), ("الأحدث", "الأحدث"), ("مفروشة", "مفروشة"), ("المزيد", "المزيد")],
-        "en": [("Cheapest", "الأرخص"), ("Newest", "الأحدث"), ("Furnished", "مفروشة"), ("More", "المزيد")],
+        "en": [("Cheapest", "cheapest"), ("Newest", "newest"), ("Furnished", "furnished"), ("More", "more")],
     },
     "FOLLOWUP_SHARED": {
         "ar": [("للطلاب", "للطلاب"), ("للبنات", "للبنات"), ("الأرخص", "الأرخص"), ("المزيد", "المزيد")],
-        "en": [("For Students", "للطلاب"), ("For Girls", "للبنات"), ("Cheapest", "الأرخص"), ("More", "المزيد")],
+        "en": [("For Students", "for students"), ("For Girls", "for girls"), ("Cheapest", "cheapest"), ("More", "more")],
     },
     "FOLLOWUP_ROOM": {
         "ar": [("حمام خاص", "حمام خاص"), ("مفروشة", "مفروشة"), ("غرفة خاصة", "غرفة خاصة"), ("المزيد", "المزيد")],
-        "en": [("Private Bathroom", "حمام خاص"), ("Furnished", "مفروشة"), ("Single Room", "غرفة خاصة"), ("More", "المزيد")],
+        "en": [("Private Bathroom", "private bathroom"), ("Furnished", "furnished"), ("Single Room", "single room"), ("More", "more")],
     },
 }
 

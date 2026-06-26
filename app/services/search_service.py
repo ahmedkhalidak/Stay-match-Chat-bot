@@ -171,11 +171,14 @@ class SearchService:
         user_id = user_id or session_id
         debug_log("SEARCH_SERVICE", f"session={session_id}, msg={message[:100]}, user={user_id}")
 
-        current_message_language = resolve_response_language(message)
         context = await memory_store.get_context(session_id, message)
+        debug_log("LANG_BEFORE", f"context.language={context.language}, message={message}")
+        current_message_language = resolve_response_language(message, context_lang=context.language)
+        debug_log("LANG_DETECTED", f"detected={current_message_language}, message={message}")
         context.language = current_message_language
         context.turn_count += 1
         lang = current_message_language
+        debug_log("LANG_FINAL", f"lang={lang}, will be used for response")
 
         if not context.user_id:
             context.user_id = user_id

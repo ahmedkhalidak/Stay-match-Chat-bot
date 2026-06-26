@@ -9,7 +9,7 @@ from typing import Optional
 
 from app.core.session_context import SessionContext
 from app.utils.logger import debug_log
-from app.utils.language_detector import detect_language
+from app.utils.language_detector import detect_language, resolve_response_language
 
 
 class MemoryStore:
@@ -45,7 +45,7 @@ class MemoryStore:
             if session_id in self._store:
                 ctx = self._store[session_id]
                 if message:
-                    ctx.language = detect_language(message)
+                    ctx.language = resolve_response_language(message, context_lang=ctx.language)
                 return ctx
 
             # Not in memory — try to reconstruct from DB
@@ -56,7 +56,7 @@ class MemoryStore:
                         ctx = self._reconstruct_context(conversation, session_id)
                         if ctx:
                             if message:
-                                ctx.language = detect_language(message)
+                                ctx.language = resolve_response_language(message, context_lang=ctx.language)
                             self._store[session_id] = ctx
                             # Evict oldest sessions if limit exceeded
                             if len(self._store) > self._max_sessions:
@@ -67,7 +67,7 @@ class MemoryStore:
                     pass
 
             # Fresh session: create in memory, fire-and-forget DB write
-            lang = detect_language(message) if message else "ar"
+            lang = resolve_response_language(message, context_lang="ar") if message else "ar"
             ctx = SessionContext(language=lang)
             self._store[session_id] = ctx
             # Evict oldest sessions if limit exceeded
@@ -338,12 +338,12 @@ class MemoryStore:
 
     def get_context_sync(self, session_id: str, message: str = "") -> SessionContext:
         if session_id not in self._store:
-            lang = detect_language(message) if message else "ar"
+            lang = resolve_response_language(message) if message else "ar"
             self._store[session_id] = SessionContext(language=lang)
         else:
             ctx = self._store[session_id]
             if message:
-                ctx.language = detect_language(message)
+                ctx.language = resolve_response_language(message, context_lang=ctx.language)
         return self._store[session_id]
 
 

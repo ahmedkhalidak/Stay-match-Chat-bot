@@ -35,7 +35,7 @@ class SuggestionGenerator:
             ]
 
         if has_more and "المزيد" not in [s.value for s in suggestions] and "More" not in [s.label for s in suggestions]:
-            suggestions.insert(0, QuickReply(label="More" if lang == "en" else "المزيد", value="المزيد"))
+            suggestions.insert(0, QuickReply(label="More" if lang == "en" else "المزيد", value="more" if lang == "en" else "المزيد"))
 
         return suggestions[:4]
 
@@ -78,7 +78,7 @@ class SuggestionGenerator:
             suggestions = []
 
         if has_more and "المزيد" not in [s.value for s in suggestions] and "More" not in [s.label for s in suggestions]:
-            suggestions.append(QuickReply(label="More" if lang == "en" else "المزيد", value="المزيد"))
+            suggestions.append(QuickReply(label="More" if lang == "en" else "المزيد", value="more" if lang == "en" else "المزيد"))
 
         return suggestions[:4]
 
@@ -88,23 +88,23 @@ class SuggestionGenerator:
             labels = t("SEARCH_TYPE_SUGGESTIONS", lang)
             return [
                 QuickReply(label=labels[0], value="أوضة" if lang == "ar" else "room"),
-                QuickReply(label=labels[1], value="شقة كاملة" if lang == "ar" else "full apartment"),
+                QuickReply(label=labels[1], value="شقة كاملة" if lang == "ar" else "apartment"),
                 QuickReply(label=labels[2], value="شقة مشتركة" if lang == "ar" else "shared housing"),
             ]
         elif slot == "location":
             labels = t("LOCATION_SUGGESTIONS", lang)
             return [
-                QuickReply(label=labels[0], value="في القاهرة" if lang == "ar" else "in cairo"),
-                QuickReply(label=labels[1], value="في المعادي" if lang == "ar" else "in maadi"),
-                QuickReply(label=labels[2], value="في الإسكندرية" if lang == "ar" else "in alexandria"),
+                QuickReply(label=labels[0], value="في القاهرة" if lang == "ar" else "cairo"),
+                QuickReply(label=labels[1], value="في المعادي" if lang == "ar" else "maadi"),
+                QuickReply(label=labels[2], value="في الإسكندرية" if lang == "ar" else "alexandria"),
                 QuickReply(label=labels[3], value="أي مكان" if lang == "ar" else "anywhere"),
             ]
         elif slot == "price":
             labels = t("PRICE_SUGGESTIONS", lang)
             return [
-                QuickReply(label=labels[0], value=labels[0] if lang == "en" else "تحت 3000"),
-                QuickReply(label=labels[1], value=labels[1] if lang == "en" else "تحت 5000"),
-                QuickReply(label=labels[2], value=labels[2] if lang == "en" else "تحت 10000"),
+                QuickReply(label=labels[0], value="تحت 3000" if lang == "ar" else "under 3000"),
+                QuickReply(label=labels[1], value="تحت 5000" if lang == "ar" else "under 5000"),
+                QuickReply(label=labels[2], value="تحت 10000" if lang == "ar" else "under 10000"),
                 QuickReply(label=labels[3], value="أي سعر" if lang == "ar" else "any price"),
             ]
         elif slot == "housing_type":
