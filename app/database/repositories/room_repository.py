@@ -64,6 +64,7 @@ class RoomRepository:
         query = f"""
         SELECT
             r.Id,
+            r.PropertyId,
             r.RoomName,
             r.Month_rent,
             r.Deposit,
@@ -276,6 +277,7 @@ class RoomRepository:
         query = f"""
         SELECT
             r.Id,
+            r.PropertyId,
             r.RoomName,
             r.Month_rent,
             r.Deposit,

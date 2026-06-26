@@ -138,6 +138,7 @@ class ResponseFormatter:
                 "shared_room": capacity > 1,
             },
             recommendation_score=scores.get(room.get("Id")) if scores else None,
+            property_id=room.get("PropertyId"),
         )
 
     def _property_card(self, prop, filters, scores=None, lang: str = "ar") -> SearchResultItem:

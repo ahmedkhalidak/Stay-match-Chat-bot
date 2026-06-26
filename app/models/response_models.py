@@ -12,6 +12,7 @@ class QuickReply(BaseModel):
 
 class SearchResultItem(BaseModel):
     id: int | str
+    property_id: Optional[int] = None
     result_type: str
     title: str
     subtitle: Optional[str] = None
